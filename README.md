@@ -1,36 +1,122 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Table & Trust — Restaurant Loyalty POC
+
+A full-stack POC for a restaurant loyalty platform used by waiters (tablet) and cashiers (POS). Built with Next.js 15, Tailwind CSS, shadcn/ui, and Framer Motion. Data is persisted in local JSON files — no database required.
+
+---
+
+## Apps
+
+| Route | Role | Description |
+|---|---|---|
+| `/` | Launcher | Pick your role |
+| `/waiter` | Waiter (tablet) | Search guests, view loyalty profile, order history, family |
+| `/cashier` | Cashier (POS) | Build and confirm orders, sync to loyalty system |
+
+---
+
+## Features
+
+### Waiter App
+- Phone number search → instant guest profile
+- Loyalty tier badge (Bronze / Silver / Gold / VIP) with progress bar to next tier
+- Stats: total visits, lifetime spend, points, last visit
+- Favorite items — top 3 most ordered, highlighted
+- Guest notes & preferences (allergies, seating, etc.)
+- Birthday & anniversary alerts — banner if today, pill badge if within 14 days
+- Order history timeline — most recent first
+- Family group panel — click any member to jump to their profile
+- Live polling — new orders placed by cashier appear within 3 seconds
+
+### Cashier App
+- Menu grid filtered by category (Starter / Main / Dessert / Drink)
+- Cart with quantity controls and per-item remove
+- Guest search with live dropdown
+- Table number field
+- Order notes
+- Confirm order → writes to `data/orders.json` → instantly visible in waiter app
+
+---
+
+## Tech Stack
+
+| Layer | Choice |
+|---|---|
+| Framework | Next.js 15 (App Router) |
+| Language | TypeScript |
+| Styling | Tailwind CSS v4 |
+| Components | shadcn/ui |
+| Animations | Framer Motion |
+| Data | JSON files (no database) |
+| Real-time | Client-side polling (3s interval) |
+
+---
+
+## Project Structure
+
+```
+app/
+  page.tsx              # Launcher home page
+  waiter/page.tsx       # Waiter tablet app
+  cashier/page.tsx      # Cashier POS app
+  api/
+    clients/route.ts    # GET by phone, by id, or all clients
+    orders/route.ts     # GET orders, POST new order
+    menu/route.ts       # GET menu items
+
+lib/
+  types.ts              # TypeScript interfaces
+  data.ts               # JSON read/write + business logic (stats, favorites, family)
+
+data/
+  clients.json          # Guest profiles (6 seeded)
+  orders.json           # Order history (9 seeded + live)
+  menu.json             # 15 menu items across 4 categories
+  family_groups.json    # 3 family groups
+
+tasks/                  # Planned next features (pick up later)
+  01-waiter-app-enhancements.md
+  02-cashier-app-enhancements.md
+  03-real-time-sync.md
+  04-analytics-dashboard.md
+  05-ui-polish.md
+```
+
+---
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+To test the full flow, open `/waiter` and `/cashier` side by side:
+1. In the **Cashier app** — search for a guest, build an order, confirm
+2. In the **Waiter app** — search the same guest — the new order appears within ~3 seconds
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Seeded test phones
 
-## Learn More
+| Phone | Guest | Tier |
+|---|---|---|
+| `0501234567` | Ahmed Al-Rashid | VIP |
+| `0507654321` | Fatima Al-Rashid | VIP |
+| `0509876543` | Omar Al-Rashid | Bronze |
+| `0551112233` | Sara Khalil | Gold |
+| `0554443322` | Khalid Khalil | Gold |
+| `0566778899` | Layla Nasser | Silver |
 
-To learn more about Next.js, take a look at the following resources:
+Ahmed, Fatima, and Omar are in the same family group. Sara and Khalid are in another.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Planned Tasks
 
-## Deploy on Vercel
+See the `tasks/` directory for detailed specs on what to build next:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Task 01** — Waiter enhancements: tablet keypad, guest registration, check-in flow
+- **Task 02** — Cashier enhancements: loyalty points award, receipt modal, table management
+- **Task 03** — Replace polling with Server-Sent Events for true real-time sync
+- **Task 04** — Manager analytics dashboard (top guests, popular items, weekly revenue)
+- **Task 05** — UI polish: skeleton loaders, toast notifications, tablet layout optimization
