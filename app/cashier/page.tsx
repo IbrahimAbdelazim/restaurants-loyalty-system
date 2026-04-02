@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { applyPercentDiscount } from "@/lib/cashier-utils";
 import { detectUiLang, networkErrorCopy } from "@/lib/toast-i18n";
 import { shouldRemoveCartItemBySwipe } from "@/lib/cart-swipe";
+import { cn } from "@/lib/utils";
 
 const CATEGORIES = ["Starter", "Main", "Dessert", "Drink"] as const;
 
@@ -324,10 +325,10 @@ export default function CashierPage() {
 
   return (
     <div className="h-screen bg-background flex flex-col overflow-hidden">
-      <header className="shrink-0 border-b border-white/[0.06] bg-background/80 backdrop-blur-xl px-4 py-3 lg:px-5">
+      <header className="shrink-0 border-b border-border/80 bg-background/80 backdrop-blur-xl px-4 py-3 lg:px-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-white/[0.06] flex items-center justify-center text-lg border border-white/10">
+            <div className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center text-lg border border-border">
               🧾
             </div>
             <div>
@@ -371,20 +372,20 @@ export default function CashierPage() {
 
       <div className="flex flex-1 overflow-hidden min-h-0">
         {/* Active tables */}
-        <div className="w-36 shrink-0 border-r border-white/[0.06] flex flex-col bg-white/[0.02] hidden md:flex">
+        <div className="w-36 shrink-0 border-r border-border/80 flex flex-col bg-muted/25 hidden md:flex">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest p-3 pb-1">
             Tables
           </p>
           <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
             {visits.length === 0 ? (
-              <p className="text-[10px] text-muted-foreground/60 px-1">No active visits</p>
+              <p className="text-[10px] text-muted-foreground px-1">No active visits</p>
             ) : (
               visits.map((v) => (
                 <button
                   key={v.clientId}
                   type="button"
                   onClick={() => pickVisit(v)}
-                  className="w-full text-left rounded-xl px-2 py-2 bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.08] transition-colors"
+                  className="w-full text-left rounded-xl px-2 py-2 bg-muted/50 border border-border hover:bg-muted transition-colors"
                 >
                   <p className="text-[10px] font-bold text-[#C9A84C]">T{v.table}</p>
                   <p className="text-xs font-medium truncate">{v.name}</p>
@@ -395,13 +396,13 @@ export default function CashierPage() {
         </div>
 
         {/* Menu */}
-        <div className="flex-1 flex flex-col overflow-hidden border-r border-white/[0.06] min-w-0">
-          <div className="shrink-0 p-2 sm:p-3 border-b border-white/[0.06] space-y-2">
+        <div className="flex-1 flex flex-col overflow-hidden border-r border-border/80 min-w-0">
+          <div className="shrink-0 p-2 sm:p-3 border-b border-border/80 space-y-2">
             <Input
               placeholder="Search menu…"
               value={menuSearch}
               onChange={(e) => setMenuSearch(e.target.value)}
-              className="h-9 bg-white/[0.04] border-white/10 rounded-xl text-sm"
+              className="h-9 bg-card border-border rounded-xl text-sm dark:bg-input/30"
             />
             {!menuSearch.trim() && (
               <div className="flex gap-1 overflow-x-auto">
@@ -417,18 +418,12 @@ export default function CashierPage() {
                       key={cat}
                       type="button"
                       onClick={() => setActiveCategory(cat)}
-                      className="relative shrink-0 min-h-11 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200"
-                      style={{
-                        background:
-                          activeCategory === cat
-                            ? "rgba(201,168,76,0.15)"
-                            : "rgba(255,255,255,0.04)",
-                        color: activeCategory === cat ? "#C9A84C" : undefined,
-                        border:
-                          activeCategory === cat
-                            ? "1px solid rgba(201,168,76,0.3)"
-                            : "1px solid rgba(255,255,255,0.06)",
-                      }}
+                      className={cn(
+                        "relative shrink-0 min-h-11 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 border",
+                        activeCategory === cat
+                          ? "bg-[#C9A84C]/15 text-[#C9A84C] border-[#C9A84C]/35"
+                          : "bg-muted/70 text-foreground border-border hover:bg-muted",
+                      )}
                     >
                       {CAT_ICONS[cat]} {cat}
                       {count > 0 && (
@@ -472,13 +467,12 @@ export default function CashierPage() {
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.97 }}
                       onClick={() => addToCart(item)}
-                      className="relative text-left p-4 rounded-2xl border transition-all duration-200"
-                      style={{
-                        background: inCart ? "rgba(201,168,76,0.12)" : "rgba(255,255,255,0.04)",
-                        borderColor: inCart
-                          ? "rgba(201,168,76,0.4)"
-                          : "rgba(255,255,255,0.07)",
-                      }}
+                      className={cn(
+                        "relative text-left p-4 rounded-2xl border transition-all duration-200",
+                        inCart
+                          ? "bg-[#C9A84C]/12 border-[#C9A84C]/40"
+                          : "bg-muted/60 border-border hover:bg-muted",
+                      )}
                     >
                       {inCart && (
                         <span className="absolute top-2.5 right-2.5 min-w-7 min-h-7 h-7 px-1.5 gold-gradient text-[#0F0D09] text-xs font-bold rounded-full inline-flex items-center justify-center shadow-lg tabular-nums">
@@ -488,8 +482,10 @@ export default function CashierPage() {
                       <p className="font-semibold text-sm text-foreground pr-6">{item.name}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">{item.category}</p>
                       <p
-                        className="text-sm mt-1 tabular-nums"
-                        style={{ color: inCart ? "#C9A84C" : "#6b7280" }}
+                        className={cn(
+                          "text-sm mt-1 tabular-nums",
+                          inCart ? "text-[#C9A84C]" : "text-muted-foreground",
+                        )}
                       >
                         ${item.price}
                       </p>
@@ -507,7 +503,7 @@ export default function CashierPage() {
           className="w-88 shrink-0 flex flex-col overflow-hidden min-h-0"
           style={{ width: "min(22rem, 100vw)" }}
         >
-          <div className="shrink-0 p-4 border-b border-white/[0.06] space-y-2">
+          <div className="shrink-0 p-4 border-b border-border/80 space-y-2">
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
               Guests
             </p>
@@ -520,7 +516,7 @@ export default function CashierPage() {
                   setShowGuestDropdown(true);
                 }}
                 onFocus={() => setShowGuestDropdown(true)}
-                className="h-10 bg-white/[0.04] border-white/10 rounded-xl text-sm"
+                className="h-10 bg-card border-border rounded-xl text-sm dark:bg-input/30"
               />
               <AnimatePresence>
                 {showGuestDropdown && guestSearch && (
@@ -528,8 +524,7 @@ export default function CashierPage() {
                     initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 4 }}
-                    className="absolute z-50 top-full left-0 right-0 mt-1 rounded-xl border border-white/10 overflow-hidden max-h-48 overflow-y-auto"
-                    style={{ background: "#1a1a1a" }}
+                    className="absolute z-50 top-full left-0 right-0 mt-1 rounded-xl border border-border bg-popover shadow-lg overflow-hidden max-h-48 overflow-y-auto"
                   >
                     {filteredGuests.slice(0, 6).map((c) => {
                       const t = TIER_CONFIG[c.tier];
@@ -537,7 +532,7 @@ export default function CashierPage() {
                         <button
                           key={c.id}
                           type="button"
-                          className="w-full text-left px-3 py-2.5 hover:bg-white/[0.06] transition-colors flex items-center gap-2 text-sm"
+                          className="w-full text-left px-3 py-2.5 hover:bg-muted transition-colors flex items-center gap-2 text-sm"
                           onClick={() => addGuest(c)}
                         >
                           <span className="font-medium text-foreground truncate">{c.name}</span>
@@ -561,13 +556,13 @@ export default function CashierPage() {
               {orderClients.map((c) => (
                 <span
                   key={c.id}
-                  className="inline-flex items-center gap-1 pl-2 pr-1 py-1 rounded-lg bg-white/[0.06] text-xs border border-white/[0.08]"
+                  className="inline-flex items-center gap-1 pl-2 pr-1 py-1 rounded-lg bg-muted text-xs border border-border"
                 >
                   <span className="truncate max-w-[120px]">{c.name}</span>
                   <button
                     type="button"
                     onClick={() => removeGuest(c.id)}
-                    className="w-5 h-5 rounded hover:bg-white/10 text-muted-foreground"
+                    className="w-5 h-5 rounded hover:bg-muted text-muted-foreground"
                   >
                     ✕
                   </button>
@@ -582,7 +577,7 @@ export default function CashierPage() {
                   className={`flex-1 text-xs py-2 rounded-lg border ${
                     splitMode === "even"
                       ? "border-[#C9A84C] bg-[#C9A84C]/15 text-[#C9A84C]"
-                      : "border-white/10"
+                      : "border-border bg-muted/40"
                   }`}
                 >
                   Split even
@@ -593,7 +588,7 @@ export default function CashierPage() {
                   className={`flex-1 text-xs py-2 rounded-lg border ${
                     splitMode === "by_item"
                       ? "border-[#C9A84C] bg-[#C9A84C]/15 text-[#C9A84C]"
-                      : "border-white/10"
+                      : "border-border bg-muted/40"
                   }`}
                 >
                   By item
@@ -602,18 +597,18 @@ export default function CashierPage() {
             )}
           </div>
 
-          <div className="shrink-0 px-4 py-3 border-b border-white/[0.06] flex items-center gap-3">
+          <div className="shrink-0 px-4 py-3 border-b border-border/80 flex items-center gap-3">
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest shrink-0">
               Table
             </p>
             <Input
               value={table}
               onChange={(e) => setTable(e.target.value)}
-              className="w-20 h-8 bg-white/[0.04] border-white/10 rounded-lg text-sm text-center"
+              className="w-20 h-8 bg-card border-border rounded-lg text-sm text-center dark:bg-input/30"
             />
           </div>
 
-          <div className="shrink-0 px-4 py-2 border-b border-white/[0.06]">
+          <div className="shrink-0 px-4 py-2 border-b border-border/80">
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">
               Promo
             </p>
@@ -621,7 +616,7 @@ export default function CashierPage() {
               placeholder="Code…"
               value={promoCode}
               onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
-              className="h-9 bg-white/[0.04] border-white/10 rounded-xl text-sm uppercase"
+              className="h-9 bg-card border-border rounded-xl text-sm uppercase dark:bg-input/30"
             />
             {promoPercentHint != null && (
               <p className="text-[10px] text-[#C9A84C] mt-1">{promoPercentHint}% off if valid</p>
@@ -634,7 +629,7 @@ export default function CashierPage() {
                 <motion.p
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="text-center text-muted-foreground/40 text-sm py-10"
+                  className="text-center text-muted-foreground text-sm py-10"
                 >
                   Tap items to add them
                 </motion.p>
@@ -657,12 +652,12 @@ export default function CashierPage() {
             </AnimatePresence>
           </div>
 
-          <div className="shrink-0 border-t border-white/[0.06] bg-background/95 backdrop-blur-sm p-3 space-y-3">
+          <div className="shrink-0 border-t border-border/80 bg-background/95 backdrop-blur-sm p-3 space-y-3">
             <Input
               placeholder="Order notes…"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="h-9 bg-white/[0.04] border-white/10 rounded-xl text-sm"
+              className="h-9 bg-card border-border rounded-xl text-sm dark:bg-input/30"
             />
 
             <div className="flex justify-between items-baseline gap-2 text-sm">
@@ -695,16 +690,12 @@ export default function CashierPage() {
               disabled={!canConfirm || submitting}
               whileHover={!canConfirm || submitting ? {} : { scale: 1.01 }}
               whileTap={!canConfirm || submitting ? {} : { scale: 0.97 }}
-              className="relative w-full min-h-[52px] py-4 rounded-2xl font-bold text-lg transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed overflow-hidden"
-              style={{
-                background:
-                  !canConfirm || cart.length === 0
-                    ? "rgba(255,255,255,0.06)"
-                    : "linear-gradient(135deg, #C9A84C, #E8C96A)",
-                color: !canConfirm || cart.length === 0 ? "#6b7280" : "#0F0D09",
-                boxShadow:
-                  !canConfirm || cart.length === 0 ? "none" : "0 4px 20px rgba(201,168,76,0.3)",
-              }}
+              className={cn(
+                "relative w-full min-h-[52px] py-4 rounded-2xl font-bold text-lg transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed overflow-hidden",
+                !canConfirm || cart.length === 0
+                  ? "bg-muted text-muted-foreground shadow-none"
+                  : "gold-gradient text-[#0F0D09] shadow-[0_4px_20px_rgba(201,168,76,0.3)]",
+              )}
             >
               <AnimatePresence>
                 {confirmBurst && (
@@ -748,11 +739,11 @@ export default function CashierPage() {
             <motion.div
               initial={{ scale: 0.95 }}
               animate={{ scale: 1 }}
-              className="bg-[#1a1a1a] print:bg-white border border-white/10 rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto p-6 text-foreground print:border-0 print:max-w-none print:shadow-none"
+              className="bg-card print:bg-white border border-border rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto p-6 text-foreground shadow-xl print:border-0 print:max-w-none print:shadow-none dark:bg-[#1a1a1a] dark:border-white/10"
             >
               <h2 className="text-lg font-bold mb-4 print:text-black">Receipt</h2>
               {lastReceipt.map((row) => (
-                <div key={row.clientId} className="mb-6 border-b border-white/10 pb-4 last:border-0 print:border-black/10">
+                <div key={row.clientId} className="mb-6 border-b border-border pb-4 last:border-0 print:border-black/10">
                   <p className="font-semibold print:text-black">{row.name}</p>
                   <p className="text-xs text-muted-foreground print:text-gray-600">
                     +{row.pointsEarned} pts · balance {row.pointsTotal} · {row.tier}
@@ -776,7 +767,7 @@ export default function CashierPage() {
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="flex-1 py-3 rounded-xl bg-white/[0.08] border border-white/10 font-semibold"
+                  className="flex-1 py-3 rounded-xl bg-muted border border-border font-semibold"
                 >
                   Print
                 </button>
@@ -843,7 +834,7 @@ function CashierCartRow({
           removeItem(item.menuItemId);
         }
       }}
-      className="flex flex-col gap-1 rounded-xl border border-white/[0.06] bg-white/[0.02] pl-2 pr-1 py-2 touch-pan-y"
+      className="flex flex-col gap-1 rounded-xl border border-border bg-muted/40 pl-2 pr-1 py-2 touch-pan-y dark:bg-white/[0.02]"
       onPointerDown={(e) => {
         pointerStart.current = { x: e.clientX, y: e.clientY };
         longPress.current = setTimeout(() => {
@@ -871,7 +862,7 @@ function CashierCartRow({
           <button
             type="button"
             onClick={() => removeOne(item.menuItemId)}
-            className="min-h-11 min-w-11 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-sm font-bold transition-colors flex items-center justify-center"
+            className="min-h-11 min-w-11 rounded-lg border border-border bg-muted hover:bg-muted/80 text-sm font-bold transition-colors flex items-center justify-center"
           >
             −
           </button>
@@ -882,7 +873,7 @@ function CashierCartRow({
               const mi = menu.find((m) => m.id === item.menuItemId);
               if (mi) addToCart(mi);
             }}
-            className="min-h-11 min-w-11 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-sm font-bold transition-colors flex items-center justify-center"
+            className="min-h-11 min-w-11 rounded-lg border border-border bg-muted hover:bg-muted/80 text-sm font-bold transition-colors flex items-center justify-center"
           >
             +
           </button>
@@ -900,7 +891,7 @@ function CashierCartRow({
       </div>
       {orderClients.length >= 2 && splitMode === "by_item" && (
         <select
-          className="text-[10px] bg-white/[0.06] border border-white/10 rounded-lg px-2 py-1 max-w-full min-h-9"
+          className="text-[10px] bg-card border border-border rounded-lg px-2 py-1 max-w-full min-h-9 dark:bg-input/30"
           value={assignment[item.menuItemId] ?? ""}
           onChange={(e) =>
             setAssignment((a) => ({ ...a, [item.menuItemId]: e.target.value }))

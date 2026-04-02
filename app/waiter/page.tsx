@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import type {
@@ -120,6 +120,11 @@ export default function WaiterPage() {
   useEffect(() => {
     refreshVisits();
   }, [refreshVisits]);
+
+  /** Focus after mount so Base UI FieldControl data-* attrs match SSR (avoids hydration mismatch). */
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
 
   const fetchClient = useCallback(
     async (phoneNum: string, options?: boolean | FetchClientOptions) => {
@@ -482,7 +487,7 @@ export default function WaiterPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-white/[0.06] bg-background/80 backdrop-blur-xl px-4 sm:px-6 lg:px-8 py-4">
+      <header className="sticky top-0 z-50 border-b border-border/80 bg-background/80 backdrop-blur-xl px-4 sm:px-6 lg:px-8 py-4">
         <div className="w-full flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl gold-gradient flex items-center justify-center text-lg shadow-lg">
@@ -505,17 +510,16 @@ export default function WaiterPage() {
               <span className="tabular-nums">{liveLabel}</span>
             </div>
             {client && (
-              <motion.button
-                whileTap={{ scale: 0.95 }}
+              <button
                 onClick={() => {
                   setClient(null);
                   clearPhone();
                   setTimeout(() => inputRef.current?.focus(), 100);
                 }}
-                className="min-h-11 text-sm text-muted-foreground hover:text-foreground border border-white/10 rounded-lg px-3 py-2 transition-colors"
+                className="min-h-11 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg px-3 py-2 transition-colors"
               >
                 Clear
-              </motion.button>
+              </button>
             )}
             <ThemeToggle />
           </div>
@@ -533,17 +537,16 @@ export default function WaiterPage() {
               {activeVisits.map((v) => (
                 <div
                   key={v.clientId}
-                  className="flex items-center gap-2 bg-background/60 rounded-xl pl-3 pr-1 py-1.5 border border-white/10"
+                  className="flex items-center gap-2 bg-muted/50 rounded-xl pl-3 pr-1 py-1.5 border border-border"
                 >
                   <span className="text-sm font-medium text-foreground truncate max-w-[140px]">{v.name}</span>
-                  <motion.button
+                  <button
                     type="button"
-                    whileTap={{ scale: 0.95 }}
                     onClick={() => handleMarkDeparted(v.clientId)}
-                    className="min-h-11 text-xs uppercase tracking-wide text-muted-foreground hover:text-foreground px-3 py-2 rounded-lg border border-white/10"
+                    className="min-h-11 text-xs uppercase tracking-wide text-muted-foreground hover:text-foreground px-3 py-2 rounded-lg border border-border"
                   >
                     Out
-                  </motion.button>
+                  </button>
                 </div>
               ))}
             </div>
@@ -560,93 +563,87 @@ export default function WaiterPage() {
         <form onSubmit={handleSearch}>
           <div className="relative">
             <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground">📱</span>
-            <Input
+            <input
               ref={inputRef}
+              data-slot="input"
               value={formatPhoneDisplay(phoneDigits)}
               onChange={(e) => setPhoneDigits(normalizePhoneDigits(e.target.value))}
               placeholder="Enter guest phone number..."
-              className="h-14 pl-11 pr-32 text-base bg-white/[0.04] border-white/10 rounded-2xl focus-visible:ring-[#C9A84C]/50 focus-visible:border-[#C9A84C]/50 placeholder:text-muted-foreground/50"
+              className={cn(
+                "h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80",
+                "h-14 pl-11 pr-32 text-base bg-card border-border rounded-2xl focus-visible:ring-[#C9A84C]/50 focus-visible:border-[#C9A84C]/50 placeholder:text-muted-foreground/50",
+              )}
               type="tel"
               inputMode="numeric"
-              autoFocus
             />
-            <motion.button
+            <button
               type="submit"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.97 }}
               className="absolute right-2 top-1/2 -translate-y-1/2 min-h-11 h-11 px-5 gold-gradient text-[#0F0D09] rounded-xl font-semibold text-sm shadow-lg"
             >
               Search
-            </motion.button>
+            </button>
           </div>
         </form>
 
         {/* Dial pad */}
         <div className="grid grid-cols-3 gap-2 max-w-sm mx-auto">
           {DIAL_KEYS.map((k) => (
-            <motion.button
+            <button
               key={k}
               type="button"
-              whileTap={{ scale: 0.92 }}
               onClick={() => appendDigit(k)}
-              className="h-14 rounded-2xl text-xl font-semibold bg-white/[0.06] border border-white/10 hover:bg-white/[0.1] active:bg-white/[0.12]"
+              className="h-14 rounded-2xl text-xl font-semibold border border-border bg-muted hover:bg-muted/80 active:bg-secondary/80 dark:bg-input/30 dark:border-input dark:hover:bg-input/50 dark:active:bg-input/60"
             >
               {k}
-            </motion.button>
+            </button>
           ))}
-          <motion.button
+          <button
             type="button"
-            whileTap={{ scale: 0.92 }}
             onClick={backspaceDigit}
-            className="h-14 rounded-2xl text-sm font-semibold bg-white/[0.06] border border-white/10"
+            className="h-14 rounded-2xl text-sm font-semibold border border-border bg-muted hover:bg-muted/80 active:bg-secondary/80 dark:bg-input/30 dark:border-input dark:hover:bg-input/50 dark:active:bg-input/60"
           >
             ⌫
-          </motion.button>
-          <motion.button
+          </button>
+          <button
             type="button"
-            whileTap={{ scale: 0.92 }}
             onClick={() => appendDigit("0")}
-            className="h-14 rounded-2xl text-xl font-semibold bg-white/[0.06] border border-white/10"
+            className="h-14 rounded-2xl text-xl font-semibold border border-border bg-muted hover:bg-muted/80 active:bg-secondary/80 dark:bg-input/30 dark:border-input dark:hover:bg-input/50 dark:active:bg-input/60"
           >
             0
-          </motion.button>
-          <motion.button
+          </button>
+          <button
             type="button"
-            whileTap={{ scale: 0.92 }}
             onClick={clearPhone}
-            className="h-14 rounded-2xl text-xs font-semibold bg-white/[0.06] border border-white/10"
+            className="h-14 rounded-2xl text-xs font-semibold border border-border bg-muted hover:bg-muted/80 active:bg-secondary/80 dark:bg-input/30 dark:border-input dark:hover:bg-input/50 dark:active:bg-input/60"
           >
             Clear
-          </motion.button>
+          </button>
         </div>
 
         {partialLoading && (
           <p className="text-center text-xs text-muted-foreground">Searching matches…</p>
         )}
         {matches.length > 1 && (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-2 space-y-1">
+          <div className="rounded-2xl border border-border bg-muted/30 p-2 space-y-1">
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest px-2 py-1">
               Tap a guest
             </p>
             {matches.map((m) => (
-              <motion.button
+              <button
                 key={m.id}
                 type="button"
-                whileTap={{ scale: 0.99 }}
                 onClick={() => selectMatch(m)}
-                className="w-full text-left rounded-xl px-3 py-3 hover:bg-white/[0.06] border border-transparent hover:border-white/10"
+                className="w-full text-left rounded-xl px-3 py-3 hover:bg-muted border border-transparent hover:border-border"
               >
                 <p className="font-semibold text-foreground">{m.name}</p>
                 <p className="text-xs text-muted-foreground">{formatPhoneDisplay(normalizePhoneDigits(m.phone))}</p>
-              </motion.button>
+              </button>
             ))}
           </div>
         )}
 
         {showRegister && !client && !loading && (
-          <motion.form
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
+          <form
             onSubmit={handleRegister}
             className="rounded-2xl border border-[#C9A84C]/30 bg-[#C9A84C]/[0.06] p-4 space-y-3"
           >
@@ -658,45 +655,39 @@ export default function WaiterPage() {
               value={registerName}
               onChange={(e) => setRegisterName(e.target.value)}
               placeholder="Full name"
-              className="h-11 bg-background/80 border-white/10 rounded-xl"
+              className="h-11 bg-background/80 border-border rounded-xl"
               required
             />
             <Input
               type="date"
               value={registerBirthday}
               onChange={(e) => setRegisterBirthday(e.target.value)}
-              className="h-11 bg-background/80 border-white/10 rounded-xl"
+              className="h-11 bg-background/80 border-border rounded-xl"
             />
             <Input
               value={registerNotes}
               onChange={(e) => setRegisterNotes(e.target.value)}
               placeholder="Notes (allergies, preferences…)"
-              className="h-11 bg-background/80 border-white/10 rounded-xl"
+              className="h-11 bg-background/80 border-border rounded-xl"
             />
-            <motion.button
+            <button
               type="submit"
               disabled={registering}
-              whileTap={{ scale: 0.98 }}
               className="w-full h-11 gold-gradient text-[#0F0D09] rounded-xl font-semibold text-sm disabled:opacity-50"
             >
               {registering ? "Saving…" : "Create guest (Bronze, 0 pts)"}
-            </motion.button>
-          </motion.form>
+            </button>
+          </form>
         )}
 
         {showClientSplit && client && (
-          <motion.div
+          <div
             key={client.id}
-            initial={{ opacity: 0, y: 20, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -12 }}
-            transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
             className="space-y-4"
           >
               {/* Alerts */}
               {isTodayOccurrence(client.birthday) && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+                <div
                   className="bg-pink-500/10 border border-pink-500/20 rounded-2xl p-4 flex items-center gap-3"
                 >
                   <span className="text-2xl">🎂</span>
@@ -704,11 +695,10 @@ export default function WaiterPage() {
                     <p className="font-semibold text-pink-300">Birthday Today!</p>
                     <p className="text-xs text-pink-400/70">Wish {client.name.split(" ")[0]} a wonderful birthday.</p>
                   </div>
-                </motion.div>
+                </div>
               )}
               {isTodayOccurrence(client.anniversary) && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+                <div
                   className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-4 flex items-center gap-3"
                 >
                   <span className="text-2xl">💑</span>
@@ -716,16 +706,14 @@ export default function WaiterPage() {
                     <p className="font-semibold text-rose-300">Anniversary Today!</p>
                     <p className="text-xs text-rose-400/70">Congratulate the couple on their special day.</p>
                   </div>
-                </motion.div>
+                </div>
               )}
               {(() => {
                 const bd = daysUntilNextOccurrence(client.birthday);
                 const ann = daysUntilNextOccurrence(client.anniversary);
                 if (!isWithinSevenDays(client.birthday) && !isWithinSevenDays(client.anniversary)) return null;
                 return (
-                  <motion.div
-                    initial={{ opacity: 0, y: -6 }}
-                    animate={{ opacity: 1, y: 0 }}
+                  <div
                     className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex flex-col gap-2"
                   >
                     <p className="text-xs font-bold text-amber-400 uppercase tracking-widest">Coming up (7 days)</p>
@@ -735,7 +723,7 @@ export default function WaiterPage() {
                     {isWithinSevenDays(client.anniversary) && ann !== null && ann > 0 && (
                       <p className="text-sm text-amber-200">💑 Anniversary in {ann} day{ann > 1 ? "s" : ""}</p>
                     )}
-                  </motion.div>
+                  </div>
                 );
               })()}
 
@@ -791,26 +779,23 @@ export default function WaiterPage() {
                               {ptsToNext.toLocaleString()} points to {nextTier}
                             </p>
                           )}
-                          <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                            <motion.div
-                              className="h-full gold-gradient rounded-full"
-                              initial={{ width: 0 }}
-                              animate={{ width: `${progress}%` }}
-                              transition={{ duration: 0.8, delay: 0.3, ease: "easeOut" }}
+                          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                            <div
+                              className="h-full gold-gradient rounded-full transition-[width] duration-700 ease-out"
+                              style={{ width: `${progress}%` }}
                             />
                           </div>
                         </div>
                       )}
 
                       {!clientIsInHouse && (
-                        <motion.button
+                        <button
                           type="button"
-                          whileTap={{ scale: 0.98 }}
                           onClick={handleMarkArrived}
                           className="mt-3 w-full sm:w-auto px-4 py-2 rounded-xl text-sm font-semibold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400"
                         >
                           Mark as arrived
-                        </motion.button>
+                        </button>
                       )}
                       {clientIsInHouse && (
                         <p className="mt-3 text-xs text-emerald-400/90 font-medium">Checked in · in house</p>
@@ -825,25 +810,22 @@ export default function WaiterPage() {
                       { label: "Spent", value: `$${client.totalSpent}`, icon: "💳" },
                       { label: "Points", value: client.points.toLocaleString(), icon: "⭐" },
                       { label: "Last Visit", value: client.lastVisit ? timeAgo(client.lastVisit) : "—", icon: "🕐" },
-                    ].map((stat, i) => (
-                      <motion.div
+                    ].map((stat) => (
+                      <div
                         key={stat.label}
-                        initial={{ opacity: 0, y: 12 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.2 + i * 0.07 }}
-                        className="bg-white/[0.04] rounded-2xl p-3 text-center"
+                        className="bg-muted/50 border border-border/60 rounded-2xl p-3 text-center"
                       >
                         <p className="text-base">{stat.icon}</p>
                         <p className="text-xs text-muted-foreground mt-1">{stat.label}</p>
                         <p className="text-sm font-bold text-foreground mt-0.5 leading-none tabular-nums">{stat.value}</p>
-                      </motion.div>
+                      </div>
                     ))}
                   </div>
 
                   {/* Notes */}
                   {client.notes && (
                     <>
-                      <Separator className="my-4 bg-white/[0.06]" />
+                      <Separator className="my-4 bg-border" />
                       <div className="bg-[#C9A84C]/[0.08] border border-[#C9A84C]/20 rounded-2xl p-3.5">
                         <p className="text-[10px] font-bold text-[#C9A84C] uppercase tracking-widest mb-1.5">Notes</p>
                         <p className="text-sm text-foreground/80">{client.notes}</p>
@@ -873,18 +855,15 @@ export default function WaiterPage() {
                   {/* Favorites */}
                   {client.favoriteItems.length > 0 && (
                     <>
-                      <Separator className="my-4 bg-white/[0.06]" />
+                      <Separator className="my-4 bg-border" />
                       <div>
                         <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2.5">
                           ⭐ Favorite Items
                         </p>
                         <div className="flex flex-wrap gap-2">
-                          {client.favoriteItems.map((item, i) => (
-                            <motion.span
+                          {client.favoriteItems.map((item) => (
+                            <span
                               key={item.menuItemId}
-                              initial={{ opacity: 0, scale: 0.85 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              transition={{ delay: 0.1 * i }}
                               className="text-sm px-3 py-1.5 rounded-full font-medium border"
                               style={{
                                 color: "#C9A84C",
@@ -894,7 +873,7 @@ export default function WaiterPage() {
                             >
                               {item.name}
                               <span className="ml-1.5 opacity-60 text-xs">×{item.count}</span>
-                            </motion.span>
+                            </span>
                           ))}
                         </div>
                       </div>
@@ -903,7 +882,7 @@ export default function WaiterPage() {
                 </div>
               </div>
 
-          </motion.div>
+          </div>
         )}
           </div>
 
@@ -912,7 +891,7 @@ export default function WaiterPage() {
               {/* Tabs */}
               <div className="glass rounded-3xl overflow-hidden">
                 {/* Tab bar */}
-                <div className="flex border-b border-white/[0.06]">
+                <div className="flex border-b border-border/80">
                   {(["history", "family"] as const).map((tab) => (
                     <button
                       key={tab}
@@ -924,8 +903,7 @@ export default function WaiterPage() {
                         ? `Order History (${client.recentOrders.length})`
                         : `Family (${client.familyMembers.length})`}
                       {activeTab === tab && (
-                        <motion.div
-                          layoutId="tab-indicator"
+                        <div
                           className="absolute bottom-0 left-0 right-0 h-0.5 gold-gradient"
                         />
                       )}
@@ -934,32 +912,24 @@ export default function WaiterPage() {
                 </div>
 
                 <div className="p-4">
-                  <AnimatePresence mode="wait">
                     {activeTab === "history" && (
-                      <motion.div
+                      <div
                         key="history"
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: 10 }}
-                        transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
                         className="space-y-3"
                       >
                         {client.recentOrders.length === 0 ? (
                           <p className="text-center text-muted-foreground py-8 text-sm">No orders yet.</p>
                         ) : (
-                          client.recentOrders.map((order, i) => {
-                            const older = client.recentOrders[i + 1];
+                          client.recentOrders.map((order, orderIndex) => {
+                            const older = client.recentOrders[orderIndex + 1];
                             const gapText =
                               older != null
                                 ? gapSincePreviousVisit(order.date, older.date, "en")
                                 : null;
                             const isNewInSession = !initialOrderIdsRef.current.has(order.id);
                             return (
-                              <motion.div
+                              <div
                                 key={order.id}
-                                initial={{ opacity: 0, y: 16 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: i * 0.05, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
                               >
                                 <OrderCard
                                   order={order}
@@ -967,40 +937,31 @@ export default function WaiterPage() {
                                   flashHighlight={flashingOrderId === order.id}
                                   sincePreviousVisit={gapText}
                                 />
-                              </motion.div>
+                              </div>
                             );
                           })
                         )}
-                      </motion.div>
+                      </div>
                     )}
 
                     {activeTab === "family" && (
-                      <motion.div
+                      <div
                         key="family"
-                        initial={{ opacity: 0, x: 10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -10 }}
-                        transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
                         className="space-y-3"
                       >
                         {client.familyMembers.length === 0 ? (
                           <p className="text-center text-muted-foreground py-8 text-sm">No family members linked.</p>
                         ) : (
-                          client.familyMembers.map((member, i) => {
+                          client.familyMembers.map((member) => {
                             const mt = TIER_CONFIG[member.tier];
                             return (
-                              <motion.button
+                              <button
                                 key={member.id}
-                                initial={{ opacity: 0, y: 8 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: i * 0.07 }}
-                                whileHover={{ scale: 1.01 }}
-                                whileTap={{ scale: 0.99 }}
                                 onClick={() => {
                                   setPhoneDigits(normalizePhoneDigits(member.phone));
                                   fetchClient(member.phone);
                                 }}
-                                className="w-full text-left bg-white/[0.04] hover:bg-white/[0.07] rounded-2xl p-4 flex items-center gap-3 transition-colors border border-white/[0.05]"
+                                className="w-full text-left bg-muted/40 hover:bg-muted/70 rounded-2xl p-4 flex items-center gap-3 transition-colors border border-border"
                               >
                                 <div className="relative">
                                   <Avatar className="h-10 w-10">
@@ -1023,23 +984,20 @@ export default function WaiterPage() {
                                 >
                                   {mt.label}
                                 </span>
-                              </motion.button>
+                              </button>
                             );
                           })
                         )}
-                      </motion.div>
+                      </div>
                     )}
-                  </AnimatePresence>
                 </div>
               </div>
           </div>
         )}
         </div>
 
-        <AnimatePresence>
           {loading && (
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            <div
               className="space-y-4 py-6"
             >
               <Skeleton className="h-44 w-full rounded-3xl" />
@@ -1049,46 +1007,34 @@ export default function WaiterPage() {
                 ))}
               </div>
               <Skeleton className="h-32 w-full rounded-2xl" />
-            </motion.div>
+            </div>
           )}
-        </AnimatePresence>
 
         {/* Error */}
-        <AnimatePresence>
           {error && (
-            <motion.div
-              initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+            <div
               className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl p-4 text-sm flex items-center gap-2"
             >
               <span>⚠️</span> {error}
-            </motion.div>
+            </div>
           )}
-        </AnimatePresence>
 
         {/* New order notification */}
-        <AnimatePresence>
           {newOrderFlash && (
-            <motion.div
-              initial={{ opacity: 0, y: -12, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -8 }}
+            <div
               className="bg-green-500/10 border border-green-500/30 text-green-400 rounded-2xl p-3 text-sm flex items-center gap-2"
             >
               <span className="animate-bounce">🔔</span> {TOAST_NEW_ORDER[waiterUiLang()]}
-            </motion.div>
+            </div>
           )}
-        </AnimatePresence>
         {/* Empty state */}
         {!client && !loading && !error && !showRegister && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.3 }}
-            className="text-center py-20 text-muted-foreground/40 space-y-3"
+          <div
+            className="text-center py-20 text-muted-foreground space-y-3"
           >
             <p className="text-5xl">🔍</p>
             <p className="text-sm">Search a guest by phone number to view their profile</p>
-          </motion.div>
+          </div>
         )}
       </main>
     </div>
@@ -1112,7 +1058,7 @@ function OrderCard({
       rounded-2xl p-4 border transition-all duration-500
       ${isNew
         ? "bg-green-500/10 border-green-500/30 shadow-[0_0_20px_rgba(34,197,94,0.12)]"
-        : "bg-white/[0.04] border-white/[0.05]"
+        : "bg-muted/40 border-border"
       }
       ${flashHighlight ? "ring-2 ring-green-400/70 ring-offset-2 ring-offset-background scale-[1.01]" : ""}
     `}
@@ -1123,7 +1069,7 @@ function OrderCard({
       <div className="flex items-center justify-between mb-2.5 flex-wrap gap-2">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-semibold text-foreground">{formatDate(order.date)}</span>
-          <span className="text-xs text-muted-foreground bg-white/[0.06] px-2 py-0.5 rounded-full">
+          <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
             Table {order.table}
           </span>
           {isNew && (
@@ -1144,7 +1090,7 @@ function OrderCard({
       </div>
       <div className="flex flex-wrap gap-1.5">
         {order.items.map((item, i) => (
-          <span key={i} className="text-xs bg-white/[0.06] text-foreground/70 px-2 py-1 rounded-lg">
+          <span key={i} className="text-xs bg-muted text-foreground/70 px-2 py-1 rounded-lg">
             {item.name} <span className="text-muted-foreground">×{item.quantity}</span>
           </span>
         ))}
