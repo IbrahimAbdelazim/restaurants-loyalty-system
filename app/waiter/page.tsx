@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import type { ClientWithStats, Order } from "@/lib/types";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const TIER_CONFIG: Record<string, { label: string; color: string; bg: string; icon: string }> = {
   Bronze: { label: "Bronze", color: "#cd7f32", bg: "rgba(205,127,50,0.15)", icon: "🥉" },
@@ -117,7 +118,7 @@ export default function WaiterPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             {/* Live indicator */}
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
@@ -132,6 +133,7 @@ export default function WaiterPage() {
                 Clear
               </motion.button>
             )}
+            <ThemeToggle />
           </div>
         </div>
       </header>

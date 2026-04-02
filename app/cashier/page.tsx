@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import type { Client, MenuItem, OrderItem } from "@/lib/types";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const CATEGORIES = ["Starter", "Main", "Dessert", "Drink"] as const;
 
@@ -101,9 +102,12 @@ export default function CashierPage() {
               <p className="text-[10px] text-muted-foreground mt-0.5">POS · Order Entry</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-            Connected
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+              Connected
+            </div>
+            <ThemeToggle />
           </div>
         </div>
       </header>

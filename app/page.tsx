@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function Home() {
   return (
@@ -70,14 +71,15 @@ export default function Home() {
           />
         </motion.div>
 
-        <motion.p
-          className="text-muted-foreground/50 text-sm"
+        <motion.div
+          className="flex flex-col items-center gap-3"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.8 }}
         >
-          Open both side-by-side to simulate the live flow
-        </motion.p>
+          <p className="text-muted-foreground/50 text-sm">Open both side-by-side to simulate the live flow</p>
+          <ThemeToggle />
+        </motion.div>
       </div>
     </div>
   );
