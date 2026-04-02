@@ -121,7 +121,7 @@ export default function WaiterPage() {
     refreshVisits();
   }, [refreshVisits]);
 
-  /** Focus after mount so Base UI FieldControl data-* attrs match SSR (avoids hydration mismatch). */
+  /** Focus after hydration; `suppressHydrationWarning` on the tel input covers browser autofill/value drift. */
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
@@ -566,6 +566,7 @@ export default function WaiterPage() {
             <input
               ref={inputRef}
               data-slot="input"
+              suppressHydrationWarning
               value={formatPhoneDisplay(phoneDigits)}
               onChange={(e) => setPhoneDigits(normalizePhoneDigits(e.target.value))}
               placeholder="Enter guest phone number..."
@@ -575,6 +576,7 @@ export default function WaiterPage() {
               )}
               type="tel"
               inputMode="numeric"
+              autoComplete="off"
             />
             <button
               type="submit"
@@ -582,6 +584,25 @@ export default function WaiterPage() {
             >
               Search
             </button>
+            {/* Autocomplete dropdown */}
+            {(partialLoading || matches.length > 0) && (
+              <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 rounded-2xl border border-border bg-card shadow-xl overflow-hidden">
+                {partialLoading && matches.length === 0 && (
+                  <p className="text-xs text-muted-foreground px-4 py-3">Searching…</p>
+                )}
+                {matches.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => selectMatch(m)}
+                    className="w-full text-left px-4 py-3 hover:bg-muted border-b border-border last:border-b-0 flex items-center justify-between gap-3"
+                  >
+                    <span className="font-semibold text-foreground">{m.name}</span>
+                    <span className="text-xs text-muted-foreground shrink-0">{formatPhoneDisplay(normalizePhoneDigits(m.phone))}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </form>
 
@@ -620,27 +641,6 @@ export default function WaiterPage() {
           </button>
         </div>
 
-        {partialLoading && (
-          <p className="text-center text-xs text-muted-foreground">Searching matches…</p>
-        )}
-        {matches.length > 1 && (
-          <div className="rounded-2xl border border-border bg-muted/30 p-2 space-y-1">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest px-2 py-1">
-              Tap a guest
-            </p>
-            {matches.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => selectMatch(m)}
-                className="w-full text-left rounded-xl px-3 py-3 hover:bg-muted border border-transparent hover:border-border"
-              >
-                <p className="font-semibold text-foreground">{m.name}</p>
-                <p className="text-xs text-muted-foreground">{formatPhoneDisplay(normalizePhoneDigits(m.phone))}</p>
-              </button>
-            ))}
-          </div>
-        )}
 
         {showRegister && !client && !loading && (
           <form

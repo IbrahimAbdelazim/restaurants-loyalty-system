@@ -19,6 +19,9 @@ describe("normalizePhoneDigits", () => {
 });
 
 describe("formatPhoneDisplay", () => {
+  it("empty input stays empty (stable controlled field default)", () => {
+    expect(formatPhoneDisplay("")).toBe("");
+  });
   it("formats 10-digit UAE-style", () => {
     expect(formatPhoneDisplay("0501234567")).toBe("050 123 4567");
   });
