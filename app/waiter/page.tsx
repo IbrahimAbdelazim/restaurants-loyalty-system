@@ -5,8 +5,22 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import type { ClientWithStats, Order } from "@/lib/types";
+import type {
+  ActiveVisit,
+  ClientMatchPreview,
+  ClientWithStats,
+  OrderWithCategoryTotals,
+  Tier,
+} from "@/lib/types";
 import { ThemeToggle } from "@/components/theme-toggle";
+import {
+  formatPhoneDisplay,
+  gapSincePreviousVisit,
+  normalizePhoneDigits,
+  nextTierLabel,
+  pointsToNextTier,
+  tierProgressPercent,
+} from "@/lib/waiter-utils";
 
 const TIER_CONFIG: Record<string, { label: string; color: string; bg: string; icon: string }> = {
   Bronze: { label: "Bronze", color: "#cd7f32", bg: "rgba(205,127,50,0.15)", icon: "🥉" },
@@ -47,51 +61,216 @@ function isTodayOccurrence(dateStr: string | null) {
   return daysUntilNextOccurrence(dateStr) === 0;
 }
 
-const TIER_POINTS: Record<string, number> = { Bronze: 500, Silver: 1500, Gold: 4000, VIP: Infinity };
-const NEXT_TIER: Record<string, string> = { Bronze: "Silver", Silver: "Gold", Gold: "VIP", VIP: "VIP" };
-
-function tierProgress(tier: string, points: number) {
-  const target = TIER_POINTS[tier] ?? 500;
-  const prev = tier === "Bronze" ? 0 : TIER_POINTS[Object.keys(TIER_POINTS)[Object.keys(TIER_POINTS).indexOf(tier) - 1]] ?? 0;
-  if (tier === "VIP") return 100;
-  return Math.min(100, Math.round(((points - prev) / (target - prev)) * 100));
+function isWithinSevenDays(dateStr: string | null) {
+  const d = daysUntilNextOccurrence(dateStr);
+  return d !== null && d >= 1 && d <= 7;
 }
 
+const DIAL_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"] as const;
+
 export default function WaiterPage() {
-  const [phone, setPhone] = useState("");
+  const [phoneDigits, setPhoneDigits] = useState("");
   const [client, setClient] = useState<ClientWithStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState<"history" | "family">("history");
-  const [lastOrderCount, setLastOrderCount] = useState(0);
   const [newOrderFlash, setNewOrderFlash] = useState(false);
+  const [matches, setMatches] = useState<ClientMatchPreview[]>([]);
+  const [partialLoading, setPartialLoading] = useState(false);
+  const [showRegister, setShowRegister] = useState(false);
+  const [registerName, setRegisterName] = useState("");
+  const [registerBirthday, setRegisterBirthday] = useState("");
+  const [registerNotes, setRegisterNotes] = useState("");
+  const [registering, setRegistering] = useState(false);
+  const [activeVisits, setActiveVisits] = useState<ActiveVisit[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const initialOrderIdsRef = useRef<Set<string>>(new Set());
+  const partialTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const refreshVisits = useCallback(async () => {
+    try {
+      const res = await fetch("/api/visits");
+      if (!res.ok) return;
+      const data = await res.json();
+      setActiveVisits(data.visits ?? []);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshVisits();
+  }, [refreshVisits]);
 
   const fetchClient = useCallback(async (phoneNum: string, isRefresh = false) => {
-    if (!isRefresh) { setLoading(true); setError(""); }
+    const normalized = normalizePhoneDigits(phoneNum);
+    if (!isRefresh) {
+      setLoading(true);
+      setError("");
+      setShowRegister(false);
+    }
     try {
-      const res = await fetch(`/api/clients?phone=${encodeURIComponent(phoneNum)}`);
+      const res = await fetch(`/api/clients?phone=${encodeURIComponent(normalized)}`);
       if (!res.ok) {
-        if (!isRefresh) setError("No guest found with that number.");
+        if (!isRefresh) {
+          const j = await res.json().catch(() => null);
+          const msg =
+            j && typeof j.message === "string"
+              ? j.message
+              : "No guest found with that number.";
+          setError(msg);
+          setShowRegister(true);
+        }
         return;
       }
       const data: ClientWithStats = await res.json();
-      if (isRefresh && data.recentOrders.length > lastOrderCount) {
-        setNewOrderFlash(true);
-        setTimeout(() => setNewOrderFlash(false), 4000);
+      if (!isRefresh) {
+        initialOrderIdsRef.current = new Set(data.recentOrders.map((o) => o.id));
+      } else {
+        const hasNew = data.recentOrders.some((o) => !initialOrderIdsRef.current.has(o.id));
+        if (hasNew) {
+          setNewOrderFlash(true);
+          setTimeout(() => setNewOrderFlash(false), 4000);
+        }
       }
       setClient(data);
-      setLastOrderCount(data.recentOrders.length);
     } catch {
       if (!isRefresh) setError("Connection error. Try again.");
     } finally {
       if (!isRefresh) setLoading(false);
     }
-  }, [lastOrderCount]);
+  }, []);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (phone.trim()) fetchClient(phone.trim());
+    const d = normalizePhoneDigits(phoneDigits);
+    if (d.length >= 4) fetchClient(d);
+  };
+
+  const appendDigit = (d: string) => {
+    setPhoneDigits((prev) => prev + d);
+  };
+
+  const backspaceDigit = () => {
+    setPhoneDigits((prev) => prev.slice(0, -1));
+  };
+
+  const clearPhone = () => {
+    setPhoneDigits("");
+    setMatches([]);
+    setError("");
+    setShowRegister(false);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  };
+
+  useEffect(() => {
+    if (partialTimerRef.current) clearTimeout(partialTimerRef.current);
+    const d = phoneDigits;
+    if (d.length < 4) {
+      setMatches([]);
+      return;
+    }
+    partialTimerRef.current = setTimeout(async () => {
+      setPartialLoading(true);
+      try {
+        const res = await fetch(`/api/clients?digits=${encodeURIComponent(d)}`);
+        if (!res.ok) {
+          setMatches([]);
+          return;
+        }
+        const data = await res.json();
+        const list: ClientMatchPreview[] = data.matches ?? [];
+        setMatches(list);
+        if (list.length === 1) {
+          const full = normalizePhoneDigits(list[0].phone);
+          if (d.length < full.length) {
+            setPhoneDigits(full);
+            fetchClient(list[0].phone);
+          }
+        }
+      } catch {
+        setMatches([]);
+      } finally {
+        setPartialLoading(false);
+      }
+    }, 320);
+    return () => {
+      if (partialTimerRef.current) clearTimeout(partialTimerRef.current);
+    };
+  }, [phoneDigits, fetchClient]);
+
+  const selectMatch = (m: ClientMatchPreview) => {
+    setPhoneDigits(normalizePhoneDigits(m.phone));
+    fetchClient(m.phone);
+    setMatches([]);
+  };
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRegistering(true);
+    setError("");
+    try {
+      const res = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: registerName,
+          phone: phoneDigits,
+          birthday: registerBirthday.trim() || null,
+          notes: registerNotes,
+        }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(typeof j.message === "string" ? j.message : "Registration failed.");
+        return;
+      }
+      const profile = j.client as ClientWithStats;
+      if (profile) {
+        initialOrderIdsRef.current = new Set(profile.recentOrders.map((o) => o.id));
+        setClient(profile);
+        setShowRegister(false);
+        setRegisterName("");
+        setRegisterBirthday("");
+        setRegisterNotes("");
+        setMatches([]);
+      }
+    } catch {
+      setError("Connection error. Try again.");
+    } finally {
+      setRegistering(false);
+    }
+  };
+
+  const handleMarkArrived = async () => {
+    if (!client) return;
+    try {
+      const res = await fetch("/api/visits", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId: client.id }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setActiveVisits(data.visits ?? []);
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const handleMarkDeparted = async (clientId: string) => {
+    try {
+      const res = await fetch(`/api/visits?clientId=${encodeURIComponent(clientId)}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setActiveVisits(data.visits ?? []);
+      }
+    } catch {
+      /* ignore */
+    }
   };
 
   useEffect(() => {
@@ -101,7 +280,10 @@ export default function WaiterPage() {
   }, [client, fetchClient]);
 
   const tier = client ? TIER_CONFIG[client.tier] : null;
-  const progress = client ? tierProgress(client.tier, client.points) : 0;
+  const progress = client ? tierProgressPercent(client.tier as Tier, client.points) : 0;
+  const ptsToNext = client ? pointsToNextTier(client.tier as Tier, client.points) : null;
+  const nextTier = client ? nextTierLabel(client.tier as Tier) : null;
+  const clientIsInHouse = client ? activeVisits.some((v) => v.clientId === client.id) : false;
 
   return (
     <div className="min-h-screen bg-background">
@@ -127,7 +309,11 @@ export default function WaiterPage() {
             {client && (
               <motion.button
                 whileTap={{ scale: 0.95 }}
-                onClick={() => { setClient(null); setPhone(""); setError(""); setTimeout(() => inputRef.current?.focus(), 100); }}
+                onClick={() => {
+                  setClient(null);
+                  clearPhone();
+                  setTimeout(() => inputRef.current?.focus(), 100);
+                }}
                 className="text-xs text-muted-foreground hover:text-foreground border border-white/10 rounded-lg px-3 py-1.5 transition-colors"
               >
                 Clear
@@ -139,17 +325,45 @@ export default function WaiterPage() {
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-6 space-y-5">
+        {/* Active in-house guests */}
+        {activeVisits.length > 0 && (
+          <div className="rounded-2xl border border-[#C9A84C]/25 bg-[#C9A84C]/[0.06] p-3">
+            <p className="text-[10px] font-bold text-[#C9A84C] uppercase tracking-widest mb-2">
+              In house now ({activeVisits.length})
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {activeVisits.map((v) => (
+                <div
+                  key={v.clientId}
+                  className="flex items-center gap-2 bg-background/60 rounded-xl pl-3 pr-1 py-1.5 border border-white/10"
+                >
+                  <span className="text-sm font-medium text-foreground truncate max-w-[140px]">{v.name}</span>
+                  <motion.button
+                    type="button"
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => handleMarkDeparted(v.clientId)}
+                    className="text-[10px] uppercase tracking-wide text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg border border-white/10"
+                  >
+                    Out
+                  </motion.button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Search */}
         <form onSubmit={handleSearch}>
           <div className="relative">
             <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground">📱</span>
             <Input
               ref={inputRef}
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              value={formatPhoneDisplay(phoneDigits)}
+              onChange={(e) => setPhoneDigits(normalizePhoneDigits(e.target.value))}
               placeholder="Enter guest phone number..."
               className="h-14 pl-11 pr-32 text-base bg-white/[0.04] border-white/10 rounded-2xl focus-visible:ring-[#C9A84C]/50 focus-visible:border-[#C9A84C]/50 placeholder:text-muted-foreground/50"
               type="tel"
+              inputMode="numeric"
               autoFocus
             />
             <motion.button
@@ -162,6 +376,109 @@ export default function WaiterPage() {
             </motion.button>
           </div>
         </form>
+
+        {/* Dial pad */}
+        <div className="grid grid-cols-3 gap-2 max-w-sm mx-auto">
+          {DIAL_KEYS.map((k) => (
+            <motion.button
+              key={k}
+              type="button"
+              whileTap={{ scale: 0.92 }}
+              onClick={() => appendDigit(k)}
+              className="h-14 rounded-2xl text-xl font-semibold bg-white/[0.06] border border-white/10 hover:bg-white/[0.1] active:bg-white/[0.12]"
+            >
+              {k}
+            </motion.button>
+          ))}
+          <motion.button
+            type="button"
+            whileTap={{ scale: 0.92 }}
+            onClick={backspaceDigit}
+            className="h-14 rounded-2xl text-sm font-semibold bg-white/[0.06] border border-white/10"
+          >
+            ⌫
+          </motion.button>
+          <motion.button
+            type="button"
+            whileTap={{ scale: 0.92 }}
+            onClick={() => appendDigit("0")}
+            className="h-14 rounded-2xl text-xl font-semibold bg-white/[0.06] border border-white/10"
+          >
+            0
+          </motion.button>
+          <motion.button
+            type="button"
+            whileTap={{ scale: 0.92 }}
+            onClick={clearPhone}
+            className="h-14 rounded-2xl text-xs font-semibold bg-white/[0.06] border border-white/10"
+          >
+            Clear
+          </motion.button>
+        </div>
+
+        {partialLoading && (
+          <p className="text-center text-xs text-muted-foreground">Searching matches…</p>
+        )}
+        {matches.length > 1 && (
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-2 space-y-1">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest px-2 py-1">
+              Tap a guest
+            </p>
+            {matches.map((m) => (
+              <motion.button
+                key={m.id}
+                type="button"
+                whileTap={{ scale: 0.99 }}
+                onClick={() => selectMatch(m)}
+                className="w-full text-left rounded-xl px-3 py-3 hover:bg-white/[0.06] border border-transparent hover:border-white/10"
+              >
+                <p className="font-semibold text-foreground">{m.name}</p>
+                <p className="text-xs text-muted-foreground">{formatPhoneDisplay(normalizePhoneDigits(m.phone))}</p>
+              </motion.button>
+            ))}
+          </div>
+        )}
+
+        {showRegister && !client && !loading && (
+          <motion.form
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            onSubmit={handleRegister}
+            className="rounded-2xl border border-[#C9A84C]/30 bg-[#C9A84C]/[0.06] p-4 space-y-3"
+          >
+            <p className="font-semibold text-foreground">Register new guest</p>
+            <p className="text-xs text-muted-foreground">
+              Phone: {formatPhoneDisplay(phoneDigits) || "—"}
+            </p>
+            <Input
+              value={registerName}
+              onChange={(e) => setRegisterName(e.target.value)}
+              placeholder="Full name"
+              className="h-11 bg-background/80 border-white/10 rounded-xl"
+              required
+            />
+            <Input
+              type="date"
+              value={registerBirthday}
+              onChange={(e) => setRegisterBirthday(e.target.value)}
+              className="h-11 bg-background/80 border-white/10 rounded-xl"
+            />
+            <Input
+              value={registerNotes}
+              onChange={(e) => setRegisterNotes(e.target.value)}
+              placeholder="Notes (allergies, preferences…)"
+              className="h-11 bg-background/80 border-white/10 rounded-xl"
+            />
+            <motion.button
+              type="submit"
+              disabled={registering}
+              whileTap={{ scale: 0.98 }}
+              className="w-full h-11 gold-gradient text-[#0F0D09] rounded-xl font-semibold text-sm disabled:opacity-50"
+            >
+              {registering ? "Saving…" : "Create guest (Bronze, 0 pts)"}
+            </motion.button>
+          </motion.form>
+        )}
 
         {/* Loading */}
         <AnimatePresence>
@@ -238,6 +555,26 @@ export default function WaiterPage() {
                   </div>
                 </motion.div>
               )}
+              {(() => {
+                const bd = daysUntilNextOccurrence(client.birthday);
+                const ann = daysUntilNextOccurrence(client.anniversary);
+                if (!isWithinSevenDays(client.birthday) && !isWithinSevenDays(client.anniversary)) return null;
+                return (
+                  <motion.div
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex flex-col gap-2"
+                  >
+                    <p className="text-xs font-bold text-amber-400 uppercase tracking-widest">Coming up (7 days)</p>
+                    {isWithinSevenDays(client.birthday) && bd !== null && bd > 0 && (
+                      <p className="text-sm text-amber-200">🎂 Birthday in {bd} day{bd > 1 ? "s" : ""}</p>
+                    )}
+                    {isWithinSevenDays(client.anniversary) && ann !== null && ann > 0 && (
+                      <p className="text-sm text-amber-200">💑 Anniversary in {ann} day{ann > 1 ? "s" : ""}</p>
+                    )}
+                  </motion.div>
+                );
+              })()}
 
               {/* Main client card */}
               <div className="glass rounded-3xl overflow-hidden">
@@ -268,20 +605,29 @@ export default function WaiterPage() {
                           {tier?.label}
                         </span>
                       </div>
-                      <p className="text-sm text-muted-foreground">{client.phone}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {formatPhoneDisplay(normalizePhoneDigits(client.phone))}
+                      </p>
                       {client.familyGroupName && (
                         <p className="text-xs text-[#C9A84C]/70 mt-0.5">{client.familyGroupName}</p>
                       )}
 
                       {/* Tier progress */}
-                      {client.tier !== "VIP" && (
+                      {client.tier === "VIP" ? (
+                        <p className="mt-3 text-xs text-[#C9A84C]/90 font-medium">Maximum loyalty tier</p>
+                      ) : (
                         <div className="mt-3">
-                          <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
                             <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                              Progress to {NEXT_TIER[client.tier]}
+                              Progress to {nextTier}
                             </span>
                             <span className="text-[10px] text-[#C9A84C]">{progress}%</span>
                           </div>
+                          {ptsToNext !== null && nextTier && (
+                            <p className="text-[11px] text-muted-foreground mb-1.5">
+                              {ptsToNext.toLocaleString()} points to {nextTier}
+                            </p>
+                          )}
                           <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
                             <motion.div
                               className="h-full gold-gradient rounded-full"
@@ -291,6 +637,20 @@ export default function WaiterPage() {
                             />
                           </div>
                         </div>
+                      )}
+
+                      {!clientIsInHouse && (
+                        <motion.button
+                          type="button"
+                          whileTap={{ scale: 0.98 }}
+                          onClick={handleMarkArrived}
+                          className="mt-3 w-full sm:w-auto px-4 py-2 rounded-xl text-sm font-semibold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400"
+                        >
+                          Mark as arrived
+                        </motion.button>
+                      )}
+                      {clientIsInHouse && (
+                        <p className="mt-3 text-xs text-emerald-400/90 font-medium">Checked in · in house</p>
                       )}
                     </div>
                   </div>
@@ -418,16 +778,28 @@ export default function WaiterPage() {
                         {client.recentOrders.length === 0 ? (
                           <p className="text-center text-muted-foreground py-8 text-sm">No orders yet.</p>
                         ) : (
-                          client.recentOrders.map((order, i) => (
-                            <motion.div
-                              key={order.id}
-                              initial={{ opacity: 0, y: 8 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              transition={{ delay: i * 0.05 }}
-                            >
-                              <OrderCard order={order} isNew={i === 0 && newOrderFlash} />
-                            </motion.div>
-                          ))
+                          client.recentOrders.map((order, i) => {
+                            const older = client.recentOrders[i + 1];
+                            const gapText =
+                              older != null
+                                ? gapSincePreviousVisit(order.date, older.date, "en")
+                                : null;
+                            const isNewInSession = !initialOrderIdsRef.current.has(order.id);
+                            return (
+                              <motion.div
+                                key={order.id}
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: i * 0.05 }}
+                              >
+                                <OrderCard
+                                  order={order}
+                                  isNew={isNewInSession}
+                                  sincePreviousVisit={gapText}
+                                />
+                              </motion.div>
+                            );
+                          })
                         )}
                       </motion.div>
                     )}
@@ -454,7 +826,10 @@ export default function WaiterPage() {
                                 transition={{ delay: i * 0.07 }}
                                 whileHover={{ scale: 1.01 }}
                                 whileTap={{ scale: 0.99 }}
-                                onClick={() => { setPhone(member.phone); fetchClient(member.phone); }}
+                                onClick={() => {
+                                  setPhoneDigits(normalizePhoneDigits(member.phone));
+                                  fetchClient(member.phone);
+                                }}
                                 className="w-full text-left bg-white/[0.04] hover:bg-white/[0.07] rounded-2xl p-4 flex items-center gap-3 transition-colors border border-white/[0.05]"
                               >
                                 <div className="relative">
@@ -492,7 +867,7 @@ export default function WaiterPage() {
         </AnimatePresence>
 
         {/* Empty state */}
-        {!client && !loading && !error && (
+        {!client && !loading && !error && !showRegister && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -508,28 +883,49 @@ export default function WaiterPage() {
   );
 }
 
-function OrderCard({ order, isNew }: { order: Order; isNew?: boolean }) {
+function OrderCard({
+  order,
+  isNew,
+  sincePreviousVisit,
+}: {
+  order: OrderWithCategoryTotals;
+  isNew?: boolean;
+  sincePreviousVisit?: string | null;
+}) {
   return (
-    <div className={`
+    <div
+      className={`
       rounded-2xl p-4 border transition-all duration-500
       ${isNew
-        ? "bg-green-500/10 border-green-500/30"
+        ? "bg-green-500/10 border-green-500/30 shadow-[0_0_20px_rgba(34,197,94,0.12)]"
         : "bg-white/[0.04] border-white/[0.05]"
       }
-    `}>
-      <div className="flex items-center justify-between mb-2.5">
-        <div className="flex items-center gap-2">
+    `}
+    >
+      {sincePreviousVisit && (
+        <p className="text-[10px] text-muted-foreground mb-2">{sincePreviousVisit}</p>
+      )}
+      <div className="flex items-center justify-between mb-2.5 flex-wrap gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-semibold text-foreground">{formatDate(order.date)}</span>
           <span className="text-xs text-muted-foreground bg-white/[0.06] px-2 py-0.5 rounded-full">
             Table {order.table}
           </span>
           {isNew && (
-            <span className="text-xs bg-green-500/20 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full font-medium">
+            <span className="text-xs bg-green-500/20 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full font-medium animate-pulse">
               New
             </span>
           )}
         </div>
         <span className="font-bold text-[#C9A84C]">${order.total}</span>
+      </div>
+      <div className="flex flex-wrap gap-3 text-[11px] text-muted-foreground mb-2">
+        <span>
+          Food <span className="text-foreground font-semibold">${order.foodTotal}</span>
+        </span>
+        <span>
+          Drinks <span className="text-foreground font-semibold">${order.drinkTotal}</span>
+        </span>
       </div>
       <div className="flex flex-wrap gap-1.5">
         {order.items.map((item, i) => (

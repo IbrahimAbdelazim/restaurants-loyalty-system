@@ -44,6 +44,20 @@ export interface Order {
   notes: string;
 }
 
+export interface OrderWithCategoryTotals extends Order {
+  foodTotal: number;
+  drinkTotal: number;
+}
+
+export interface ActiveVisit {
+  clientId: string;
+  phone: string;
+  name: string;
+  arrivedAt: string;
+}
+
+export type ClientMatchPreview = Pick<Client, "id" | "name" | "phone">;
+
 // Enriched types for UI
 export interface ClientWithStats extends Client {
   totalVisits: number;
@@ -52,5 +66,5 @@ export interface ClientWithStats extends Client {
   favoriteItems: { name: string; menuItemId: string; count: number }[];
   familyMembers: Client[];
   familyGroupName: string | null;
-  recentOrders: Order[];
+  recentOrders: OrderWithCategoryTotals[];
 }
