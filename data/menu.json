@@ -1,0 +1,17 @@
+[
+  { "id": "m1", "name": "Grilled Salmon", "category": "Main", "price": 28 },
+  { "id": "m2", "name": "Beef Tenderloin", "category": "Main", "price": 42 },
+  { "id": "m3", "name": "Truffle Risotto", "category": "Main", "price": 24 },
+  { "id": "m4", "name": "Caesar Salad", "category": "Starter", "price": 12 },
+  { "id": "m5", "name": "Burrata", "category": "Starter", "price": 16 },
+  { "id": "m6", "name": "Soup of the Day", "category": "Starter", "price": 10 },
+  { "id": "m7", "name": "Chocolate Lava Cake", "category": "Dessert", "price": 9 },
+  { "id": "m8", "name": "Tiramisu", "category": "Dessert", "price": 8 },
+  { "id": "m9", "name": "Crème Brûlée", "category": "Dessert", "price": 8 },
+  { "id": "m10", "name": "Still Water", "category": "Drink", "price": 4 },
+  { "id": "m11", "name": "Sparkling Water", "category": "Drink", "price": 4 },
+  { "id": "m12", "name": "Fresh Orange Juice", "category": "Drink", "price": 6 },
+  { "id": "m13", "name": "House Red Wine", "category": "Drink", "price": 12 },
+  { "id": "m14", "name": "House White Wine", "category": "Drink", "price": 12 },
+  { "id": "m15", "name": "Espresso", "category": "Drink", "price": 4 }
+]

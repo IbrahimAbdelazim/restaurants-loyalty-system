@@ -1,0 +1,80 @@
+[
+  {
+    "id": "c1",
+    "name": "Ahmed Al-Rashid",
+    "phone": "0501234567",
+    "email": "ahmed@example.com",
+    "birthday": "1980-03-15",
+    "anniversary": "2005-06-20",
+    "tier": "VIP",
+    "points": 4200,
+    "familyGroupId": "fg1",
+    "notes": "Prefers window seat. Allergic to shellfish. Likes red wine.",
+    "createdAt": "2022-01-10"
+  },
+  {
+    "id": "c2",
+    "name": "Fatima Al-Rashid",
+    "phone": "0507654321",
+    "email": "fatima@example.com",
+    "birthday": "1983-07-22",
+    "anniversary": "2005-06-20",
+    "tier": "VIP",
+    "points": 3800,
+    "familyGroupId": "fg1",
+    "notes": "Vegetarian. Prefers still water.",
+    "createdAt": "2022-01-10"
+  },
+  {
+    "id": "c3",
+    "name": "Omar Al-Rashid",
+    "phone": "0509876543",
+    "email": "omar@example.com",
+    "birthday": "2008-11-05",
+    "anniversary": null,
+    "tier": "Bronze",
+    "points": 320,
+    "familyGroupId": "fg1",
+    "notes": "Ahmed's son. Loves chocolate desserts.",
+    "createdAt": "2023-05-01"
+  },
+  {
+    "id": "c4",
+    "name": "Sara Khalil",
+    "phone": "0551112233",
+    "email": "sara@example.com",
+    "birthday": "1990-12-01",
+    "anniversary": null,
+    "tier": "Gold",
+    "points": 1850,
+    "familyGroupId": "fg2",
+    "notes": "Prefers quiet corner. No pork.",
+    "createdAt": "2022-08-15"
+  },
+  {
+    "id": "c5",
+    "name": "Khalid Khalil",
+    "phone": "0554443322",
+    "email": "khalid@example.com",
+    "birthday": "1988-04-18",
+    "anniversary": "2015-09-10",
+    "tier": "Gold",
+    "points": 2100,
+    "familyGroupId": "fg2",
+    "notes": "Sara's husband. Business dinners frequent.",
+    "createdAt": "2022-08-15"
+  },
+  {
+    "id": "c6",
+    "name": "Layla Nasser",
+    "phone": "0566778899",
+    "email": "layla@example.com",
+    "birthday": "1995-09-30",
+    "anniversary": null,
+    "tier": "Silver",
+    "points": 780,
+    "familyGroupId": "fg3",
+    "notes": "Lactose intolerant. Loves sparkling water.",
+    "createdAt": "2023-02-20"
+  }
+]
