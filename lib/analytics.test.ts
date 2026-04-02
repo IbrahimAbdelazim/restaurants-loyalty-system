@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { Client, MenuItem, Order } from "./types";
+import type { Client, MenuItem, Order, ShiftLogEntry } from "./types";
 import {
   daysUntilNextMonthDay,
   getMondayOfWeek,
@@ -126,6 +126,54 @@ describe("getTodayOverview", () => {
     expect(o.revenueToday).toBe(50);
     expect(o.newClientsToday).toBe(1);
     expect(o.activeClients).toBe(1);
+  });
+
+  it("aligns with order.date set via toISODateString (same as POST /api/orders)", () => {
+    const ref = new Date(2026, 5, 20);
+    const dayStr = toISODateString(ref);
+    const aligned: Order[] = [
+      {
+        id: "a1",
+        clientId: "c1",
+        date: dayStr,
+        status: "completed",
+        table: "1",
+        items: [],
+        total: 42,
+        notes: "",
+      },
+    ];
+    const o = getTodayOverview(aligned, clients, [], ref);
+    expect(o.ordersToday).toBe(1);
+    expect(o.revenueToday).toBe(42);
+  });
+});
+
+describe("shift log local calendar day (getShiftLogEntriesForDate filter)", () => {
+  function entriesForLocalDate(entries: ShiftLogEntry[], dateStr: string) {
+    return entries.filter((e) => toISODateString(new Date(e.confirmedAt)) === dateStr);
+  }
+
+  const entry = (confirmedAt: string): ShiftLogEntry => ({
+    id: "sl1",
+    confirmedAt,
+    table: "1",
+    orderIds: ["o1"],
+    totalRevenue: 10,
+    clientSummaries: [],
+  });
+
+  it("includes entries whose confirmedAt falls on dateStr in local calendar", () => {
+    const localNoon = new Date(2026, 8, 15, 12, 0, 0);
+    const day = toISODateString(localNoon);
+    expect(entriesForLocalDate([entry(localNoon.toISOString())], day)).toHaveLength(1);
+  });
+
+  it("excludes entries on a different local day", () => {
+    const localNoon = new Date(2026, 8, 15, 12, 0, 0);
+    const day = toISODateString(localNoon);
+    const other = new Date(2026, 8, 16, 12, 0, 0);
+    expect(entriesForLocalDate([entry(other.toISOString())], day)).toHaveLength(0);
   });
 });
 

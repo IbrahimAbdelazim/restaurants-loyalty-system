@@ -72,6 +72,8 @@ curl -s -X POST 'http://localhost:3000/api/orders?lang=en' \
 
 ## GET `/api/shift-log` — today’s shift summary
 
+Default `date` (when omitted) is the server’s **local calendar day** (`YYYY-MM-DD`), matching manager “Today’s overview” and order `date` stamps. Entries are included when `confirmedAt` falls on that local day (not raw UTC string prefix).
+
 ```bash
 curl -s 'http://localhost:3000/api/shift-log?lang=en'
 ```

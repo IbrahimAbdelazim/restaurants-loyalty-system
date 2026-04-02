@@ -11,6 +11,7 @@ import {
   saveOrder,
 } from "@/lib/data";
 import { localizedMessage, pickLocalized, resolveLang } from "@/lib/api-messages";
+import { toISODateString } from "@/lib/analytics";
 import { emitOrderSaved } from "@/lib/events";
 import { normalizeOrderItemsFromMenu } from "@/lib/order-checkout";
 import {
@@ -160,7 +161,7 @@ export async function POST(req: NextRequest) {
   const order: Order = {
     id: orderId,
     clientId: client.id,
-    date: new Date().toISOString().split("T")[0],
+    date: toISODateString(new Date()),
     status: "completed",
     table,
     items,
@@ -265,7 +266,7 @@ function handleSplitCheckout(params: {
       const order: Order = {
         id: orderId,
         clientId: c!.id,
-        date: new Date().toISOString().split("T")[0],
+        date: toISODateString(new Date()),
         status: "completed",
         table,
         items: fullItems,
@@ -344,7 +345,7 @@ function handleSplitCheckout(params: {
       const order: Order = {
         id: orderId,
         clientId: c!.id,
-        date: new Date().toISOString().split("T")[0],
+        date: toISODateString(new Date()),
         status: "completed",
         table,
         items: lineItems,

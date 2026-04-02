@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { toISODateString } from "./analytics";
 import type {
   ActiveVisit,
   Client,
@@ -92,7 +93,7 @@ export function registerClient(input: RegisterClientInput): RegisterClientResult
     points: 0,
     familyGroupId: null,
     notes: input.notes.trim(),
-    createdAt: new Date().toISOString().split("T")[0],
+    createdAt: toISODateString(new Date()),
   };
   saveClient(client);
   return { ok: true, client };
@@ -190,8 +191,9 @@ export function appendShiftLogEntry(
 }
 
 export function getShiftLogEntriesForDate(dateStr: string): ShiftLogEntry[] {
-  const prefix = dateStr;
-  return getShiftLog().filter((e) => e.confirmedAt.startsWith(prefix));
+  return getShiftLog().filter(
+    (e) => toISODateString(new Date(e.confirmedAt)) === dateStr
+  );
 }
 
 // --- Points & tier ---

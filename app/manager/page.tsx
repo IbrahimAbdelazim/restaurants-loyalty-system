@@ -83,6 +83,8 @@ type PageProps = {
   searchParams: Promise<{ category?: string | string[] }>;
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function ManagerPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const category = parseCategoryParam(sp.category);
