@@ -66,4 +66,9 @@ describe("app/cashier/page.tsx surfaces", () => {
     expect(cashier).not.toContain("border-white/[0.06]");
     expect(cashier).not.toMatch(/bg-white\/\[0\.04\]/);
   });
+
+  it("avoids framer-motion and Base UI Input (SSR hydration)", () => {
+    expect(cashier).not.toContain('from "framer-motion"');
+    expect(cashier).not.toContain('from "@/components/ui/input"');
+  });
 });

@@ -1,8 +1,6 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Input } from "@/components/ui/input";
 import type {
   ActiveVisit,
   CheckoutReceiptLine,
@@ -16,8 +14,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { applyPercentDiscount } from "@/lib/cashier-utils";
 import { detectUiLang, networkErrorCopy } from "@/lib/toast-i18n";
-import { shouldRemoveCartItemBySwipe } from "@/lib/cart-swipe";
 import { cn } from "@/lib/utils";
+
+/** Native input styling aligned with `components/ui/input` (avoids Base UI FieldControl hydration mismatch). */
+const INPUT_BASE =
+  "h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80";
 
 const CATEGORIES = ["Starter", "Main", "Dessert", "Drink"] as const;
 
@@ -356,19 +357,12 @@ export default function CashierPage() {
         </div>
       </header>
 
-      <AnimatePresence>
-        {successMsg && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="shrink-0 bg-green-500/15 border-b border-green-500/20 px-6 py-3 flex items-center gap-3 text-green-400"
-          >
-            <span className="text-xl">✅</span>
-            <span className="font-semibold text-sm">{successMsg}</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {successMsg && (
+        <div className="shrink-0 bg-green-500/15 border-b border-green-500/20 px-6 py-3 flex items-center gap-3 text-green-400">
+          <span className="text-xl">✅</span>
+          <span className="font-semibold text-sm">{successMsg}</span>
+        </div>
+      )}
 
       <div className="flex flex-1 overflow-hidden min-h-0">
         {/* Active tables */}
@@ -398,11 +392,15 @@ export default function CashierPage() {
         {/* Menu */}
         <div className="flex-1 flex flex-col overflow-hidden border-r border-border/80 min-w-0">
           <div className="shrink-0 p-2 sm:p-3 border-b border-border/80 space-y-2">
-            <Input
+            <input
+              data-slot="input"
               placeholder="Search menu…"
               value={menuSearch}
               onChange={(e) => setMenuSearch(e.target.value)}
-              className="h-9 bg-card border-border rounded-xl text-sm dark:bg-input/30"
+              className={cn(
+                INPUT_BASE,
+                "h-9 bg-card border-border rounded-xl text-sm",
+              )}
             />
             {!menuSearch.trim() && (
               <div className="flex gap-1 overflow-x-auto">
@@ -446,29 +444,19 @@ export default function CashierPage() {
                 ))}
               </div>
             ) : (
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={menuSearch || activeCategory}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="grid grid-cols-2 min-[1280px]:grid-cols-3 gap-2 sm:gap-3"
-              >
-                {visibleMenu.map((item, i) => {
+            <div
+              key={menuSearch || activeCategory}
+              className="grid grid-cols-2 min-[1280px]:grid-cols-3 gap-2 sm:gap-3"
+            >
+                {visibleMenu.map((item) => {
                   const inCart = cart.find((c) => c.menuItemId === item.id);
                   return (
-                    <motion.button
+                    <button
                       key={item.id}
                       type="button"
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: i * 0.04 }}
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.97 }}
                       onClick={() => addToCart(item)}
                       className={cn(
-                        "relative text-left p-4 rounded-2xl border transition-all duration-200",
+                        "relative text-left p-4 rounded-2xl border transition-all duration-200 active:scale-[0.98] hover:scale-[1.01]",
                         inCart
                           ? "bg-[#C9A84C]/12 border-[#C9A84C]/40"
                           : "bg-muted/60 border-border hover:bg-muted",
@@ -489,11 +477,10 @@ export default function CashierPage() {
                       >
                         ${item.price}
                       </p>
-                    </motion.button>
+                    </button>
                   );
                 })}
-              </motion.div>
-            </AnimatePresence>
+            </div>
             )}
           </div>
         </div>
@@ -508,7 +495,8 @@ export default function CashierPage() {
               Guests
             </p>
             <div className="relative">
-              <Input
+              <input
+                data-slot="input"
                 placeholder="Add guest…"
                 value={guestSearch}
                 onChange={(e) => {
@@ -516,15 +504,13 @@ export default function CashierPage() {
                   setShowGuestDropdown(true);
                 }}
                 onFocus={() => setShowGuestDropdown(true)}
-                className="h-10 bg-card border-border rounded-xl text-sm dark:bg-input/30"
+                className={cn(
+                  INPUT_BASE,
+                  "h-10 bg-card border-border rounded-xl text-sm",
+                )}
               />
-              <AnimatePresence>
                 {showGuestDropdown && guestSearch && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 4 }}
-                    className="absolute z-50 top-full left-0 right-0 mt-1 rounded-xl border border-border bg-popover shadow-lg overflow-hidden max-h-48 overflow-y-auto"
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 rounded-xl border border-border bg-popover shadow-lg overflow-hidden max-h-48 overflow-y-auto"
                   >
                     {filteredGuests.slice(0, 6).map((c) => {
                       const t = TIER_CONFIG[c.tier];
@@ -548,9 +534,8 @@ export default function CashierPage() {
                     {filteredGuests.length === 0 && (
                       <p className="text-sm text-muted-foreground p-3">No guests found.</p>
                     )}
-                  </motion.div>
+                  </div>
                 )}
-              </AnimatePresence>
             </div>
             <div className="flex flex-wrap gap-1.5">
               {orderClients.map((c) => (
@@ -601,10 +586,14 @@ export default function CashierPage() {
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest shrink-0">
               Table
             </p>
-            <Input
+            <input
+              data-slot="input"
               value={table}
               onChange={(e) => setTable(e.target.value)}
-              className="w-20 h-8 bg-card border-border rounded-lg text-sm text-center dark:bg-input/30"
+              className={cn(
+                INPUT_BASE,
+                "w-20 h-8 bg-card border-border rounded-lg text-sm text-center",
+              )}
             />
           </div>
 
@@ -612,11 +601,15 @@ export default function CashierPage() {
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">
               Promo
             </p>
-            <Input
+            <input
+              data-slot="input"
               placeholder="Code…"
               value={promoCode}
               onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
-              className="h-9 bg-card border-border rounded-xl text-sm uppercase dark:bg-input/30"
+              className={cn(
+                INPUT_BASE,
+                "h-9 bg-card border-border rounded-xl text-sm uppercase",
+              )}
             />
             {promoPercentHint != null && (
               <p className="text-[10px] text-[#C9A84C] mt-1">{promoPercentHint}% off if valid</p>
@@ -624,40 +617,38 @@ export default function CashierPage() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-2 min-h-0">
-            <AnimatePresence initial={false}>
-              {cart.length === 0 ? (
-                <motion.p
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="text-center text-muted-foreground text-sm py-10"
-                >
-                  Tap items to add them
-                </motion.p>
-              ) : (
-                cart.map((item) => (
-                  <CashierCartRow
-                    key={item.menuItemId}
-                    item={item}
-                    menu={menu}
-                    orderClients={orderClients}
-                    splitMode={splitMode}
-                    assignment={assignment}
-                    setAssignment={setAssignment}
-                    removeOne={removeOne}
-                    removeItem={removeItem}
-                    addToCart={addToCart}
-                  />
-                ))
-              )}
-            </AnimatePresence>
+            {cart.length === 0 ? (
+              <p className="text-center text-muted-foreground text-sm py-10">
+                Tap items to add them
+              </p>
+            ) : (
+              cart.map((item) => (
+                <CashierCartRow
+                  key={item.menuItemId}
+                  item={item}
+                  menu={menu}
+                  orderClients={orderClients}
+                  splitMode={splitMode}
+                  assignment={assignment}
+                  setAssignment={setAssignment}
+                  removeOne={removeOne}
+                  removeItem={removeItem}
+                  addToCart={addToCart}
+                />
+              ))
+            )}
           </div>
 
           <div className="shrink-0 border-t border-border/80 bg-background/95 backdrop-blur-sm p-3 space-y-3">
-            <Input
+            <input
+              data-slot="input"
               placeholder="Order notes…"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="h-9 bg-card border-border rounded-xl text-sm dark:bg-input/30"
+              className={cn(
+                INPUT_BASE,
+                "h-9 bg-card border-border rounded-xl text-sm",
+              )}
             />
 
             <div className="flex justify-between items-baseline gap-2 text-sm">
@@ -684,33 +675,22 @@ export default function CashierPage() {
               </div>
             </div>
 
-            <motion.button
+            <button
               type="button"
               onClick={confirmOrder}
               disabled={!canConfirm || submitting}
-              whileHover={!canConfirm || submitting ? {} : { scale: 1.01 }}
-              whileTap={!canConfirm || submitting ? {} : { scale: 0.97 }}
               className={cn(
-                "relative w-full min-h-[52px] py-4 rounded-2xl font-bold text-lg transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed overflow-hidden",
+                "relative w-full min-h-[52px] py-4 rounded-2xl font-bold text-lg transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed overflow-hidden active:scale-[0.98] enabled:hover:scale-[1.01]",
                 !canConfirm || cart.length === 0
                   ? "bg-muted text-muted-foreground shadow-none"
                   : "gold-gradient text-[#0F0D09] shadow-[0_4px_20px_rgba(201,168,76,0.3)]",
               )}
             >
-              <AnimatePresence>
-                {confirmBurst && (
-                  <motion.span
-                    key="burst"
-                    className="pointer-events-none absolute inset-0 flex items-center justify-center text-3xl"
-                    initial={{ scale: 0, opacity: 0 }}
-                    animate={{ scale: [0, 1.25, 1], opacity: [0, 1, 0] }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-                  >
-                    ✓
-                  </motion.span>
-                )}
-              </AnimatePresence>
+              {confirmBurst && (
+                <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-3xl text-[#0F0D09]">
+                  ✓
+                </span>
+              )}
               {submitting ? (
                 <span className="flex items-center justify-center gap-2">
                   <span className="w-4 h-4 border-2 border-[#0F0D09]/30 border-t-[#0F0D09] rounded-full animate-spin" />
@@ -719,7 +699,7 @@ export default function CashierPage() {
               ) : (
                 "Confirm order"
               )}
-            </motion.button>
+            </button>
 
             {orderClients.length === 0 && cart.length > 0 && (
               <p className="text-xs text-center text-red-400/80">Add a guest to confirm</p>
@@ -728,17 +708,10 @@ export default function CashierPage() {
         </div>
       </div>
 
-      <AnimatePresence>
-        {receiptOpen && lastReceipt && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 print:static print:bg-white print:p-0"
+      {receiptOpen && lastReceipt && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 print:static print:bg-white print:p-0"
           >
-            <motion.div
-              initial={{ scale: 0.95 }}
-              animate={{ scale: 1 }}
+            <div
               className="bg-card print:bg-white border border-border rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto p-6 text-foreground shadow-xl print:border-0 print:max-w-none print:shadow-none dark:bg-[#1a1a1a] dark:border-white/10"
             >
               <h2 className="text-lg font-bold mb-4 print:text-black">Receipt</h2>
@@ -779,10 +752,9 @@ export default function CashierPage() {
                   Done
                 </button>
               </div>
-            </motion.div>
-          </motion.div>
+            </div>
+          </div>
         )}
-      </AnimatePresence>
     </div>
   );
 }
@@ -819,21 +791,7 @@ function CashierCartRow({
   };
 
   return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -20 }}
-      transition={{ duration: 0.2 }}
-      drag="x"
-      dragConstraints={{ left: 0, right: 100 }}
-      dragElastic={0.08}
-      onDragStart={clearLp}
-      onDragEnd={(_, info) => {
-        if (shouldRemoveCartItemBySwipe(info.offset.x)) {
-          removeItem(item.menuItemId);
-        }
-      }}
+    <div
       className="flex flex-col gap-1 rounded-xl border border-border bg-muted/40 pl-2 pr-1 py-2 touch-pan-y dark:bg-white/[0.02]"
       onPointerDown={(e) => {
         pointerStart.current = { x: e.clientX, y: e.clientY };
@@ -905,6 +863,6 @@ function CashierCartRow({
           ))}
         </select>
       )}
-    </motion.div>
+    </div>
   );
 }
