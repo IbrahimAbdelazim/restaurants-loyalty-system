@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export function ThemeToggle() {
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -14,7 +14,7 @@ export function ThemeToggle() {
   }, []);
   if (!mounted) return <div className="w-9 h-9" />;
 
-  const isDark = theme === "dark";
+  const isDark = resolvedTheme === "dark";
 
   return (
     <motion.button
@@ -31,7 +31,7 @@ export function ThemeToggle() {
     >
       <AnimatePresence mode="wait" initial={false}>
         <motion.span
-          key={theme}
+          key={resolvedTheme ?? theme}
           initial={{ opacity: 0, rotate: -30, scale: 0.7 }}
           animate={{ opacity: 1, rotate: 0, scale: 1 }}
           exit={{ opacity: 0, rotate: 30, scale: 0.7 }}

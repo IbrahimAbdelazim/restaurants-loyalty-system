@@ -13,6 +13,9 @@ import type {
   Tier,
 } from "@/lib/types";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
+import { detectUiLang, networkErrorCopy } from "@/lib/toast-i18n";
 import {
   formatPhoneDisplay,
   gapSincePreviousVisit,
@@ -74,11 +77,7 @@ const TOAST_NEW_ORDER = {
 } as const;
 
 function waiterUiLang(): "en" | "ar" {
-  if (typeof window === "undefined") return "en";
-  const htmlLang = document.documentElement.lang?.toLowerCase() ?? "";
-  if (htmlLang.startsWith("ar")) return "ar";
-  if (navigator.language.toLowerCase().startsWith("ar")) return "ar";
-  return "en";
+  return detectUiLang();
 }
 
 type FetchClientOptions = { refresh?: boolean; skipNewOrderToast?: boolean };
@@ -105,6 +104,7 @@ export default function WaiterPage() {
   const initialOrderIdsRef = useRef<Set<string>>(new Set());
   const partialTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flashOrderClearRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSearchPhoneRef = useRef<string>("");
 
   const refreshVisits = useCallback(async () => {
     try {
@@ -133,6 +133,7 @@ export default function WaiterPage() {
 
       const normalized = normalizePhoneDigits(phoneNum);
       if (!isRefresh) {
+        lastSearchPhoneRef.current = normalized;
         setLoading(true);
         setError("");
         setShowRegister(false);
@@ -163,7 +164,28 @@ export default function WaiterPage() {
         }
         setClient(data);
       } catch {
-        if (!isRefresh) setError("Connection error. Try again.");
+        if (!isRefresh) {
+          const lang = detectUiLang();
+          const copy = networkErrorCopy(lang);
+          setError(
+            lang === "ar"
+              ? "خطأ في الاتصال. أعد المحاولة."
+              : "Connection error. Try again."
+          );
+          toast.error(copy.title, {
+            description:
+              lang === "ar"
+                ? "تعذر الوصول إلى الخادم."
+                : "Could not reach the server.",
+            action: {
+              label: copy.retry,
+              onClick: () => {
+                const p = lastSearchPhoneRef.current;
+                if (p.length >= 4) fetchClient(p);
+              },
+            },
+          });
+        }
       } finally {
         if (!isRefresh) setLoading(false);
       }
@@ -235,8 +257,7 @@ export default function WaiterPage() {
     setMatches([]);
   };
 
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const performRegister = useCallback(async () => {
     setRegistering(true);
     setError("");
     try {
@@ -266,10 +287,33 @@ export default function WaiterPage() {
         setMatches([]);
       }
     } catch {
-      setError("Connection error. Try again.");
+      const lang = detectUiLang();
+      const copy = networkErrorCopy(lang);
+      setError(
+        lang === "ar"
+          ? "خطأ في الاتصال. أعد المحاولة."
+          : "Connection error. Try again."
+      );
+      toast.error(copy.title, {
+        description:
+          lang === "ar"
+            ? "تعذر إكمال التسجيل."
+            : "Could not complete registration.",
+        action: {
+          label: copy.retry,
+          onClick: () => {
+            void performRegister();
+          },
+        },
+      });
     } finally {
       setRegistering(false);
     }
+  }, [registerName, phoneDigits, registerBirthday, registerNotes]);
+
+  const handleRegister = (e: React.FormEvent) => {
+    e.preventDefault();
+    void performRegister();
   };
 
   const handleMarkArrived = async () => {
@@ -433,18 +477,20 @@ export default function WaiterPage() {
         ? "Live"
         : "Connecting…";
 
+  const showClientSplit = Boolean(client && !loading);
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-white/[0.06] bg-background/80 backdrop-blur-xl px-6 py-4">
-        <div className="max-w-3xl mx-auto flex items-center justify-between">
+      <header className="sticky top-0 z-50 border-b border-white/[0.06] bg-background/80 backdrop-blur-xl px-4 sm:px-6 lg:px-8 py-4">
+        <div className="w-full flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl gold-gradient flex items-center justify-center text-lg shadow-lg">
               🍽️
             </div>
             <div>
-              <p className="font-bold text-sm text-foreground leading-none">Waiter App</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Guest Loyalty</p>
+              <p className="font-bold text-base text-foreground leading-none">Waiter App</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Guest Loyalty</p>
             </div>
           </div>
 
@@ -466,7 +512,7 @@ export default function WaiterPage() {
                   clearPhone();
                   setTimeout(() => inputRef.current?.focus(), 100);
                 }}
-                className="text-xs text-muted-foreground hover:text-foreground border border-white/10 rounded-lg px-3 py-1.5 transition-colors"
+                className="min-h-11 text-sm text-muted-foreground hover:text-foreground border border-white/10 rounded-lg px-3 py-2 transition-colors"
               >
                 Clear
               </motion.button>
@@ -476,7 +522,7 @@ export default function WaiterPage() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 py-6 space-y-5">
+      <main className="w-full max-w-none px-4 sm:px-6 lg:px-8 py-6 space-y-5">
         {/* Active in-house guests */}
         {activeVisits.length > 0 && (
           <div className="rounded-2xl border border-[#C9A84C]/25 bg-[#C9A84C]/[0.06] p-3">
@@ -494,7 +540,7 @@ export default function WaiterPage() {
                     type="button"
                     whileTap={{ scale: 0.95 }}
                     onClick={() => handleMarkDeparted(v.clientId)}
-                    className="text-[10px] uppercase tracking-wide text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg border border-white/10"
+                    className="min-h-11 text-xs uppercase tracking-wide text-muted-foreground hover:text-foreground px-3 py-2 rounded-lg border border-white/10"
                   >
                     Out
                   </motion.button>
@@ -504,6 +550,12 @@ export default function WaiterPage() {
           </div>
         )}
 
+        <div
+          className={
+            showClientSplit ? "lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start" : ""
+          }
+        >
+          <div className="space-y-5 min-w-0">
         {/* Search */}
         <form onSubmit={handleSearch}>
           <div className="relative">
@@ -522,7 +574,7 @@ export default function WaiterPage() {
               type="submit"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.97 }}
-              className="absolute right-2 top-1/2 -translate-y-1/2 h-10 px-5 gold-gradient text-[#0F0D09] rounded-xl font-semibold text-sm shadow-lg"
+              className="absolute right-2 top-1/2 -translate-y-1/2 min-h-11 h-11 px-5 gold-gradient text-[#0F0D09] rounded-xl font-semibold text-sm shadow-lg"
             >
               Search
             </motion.button>
@@ -632,56 +684,15 @@ export default function WaiterPage() {
           </motion.form>
         )}
 
-        {/* Loading */}
-        <AnimatePresence>
-          {loading && (
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="flex items-center gap-3 justify-center py-8 text-muted-foreground"
-            >
-              <div className="w-5 h-5 border-2 border-[#C9A84C]/30 border-t-[#C9A84C] rounded-full animate-spin" />
-              Looking up guest...
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Error */}
-        <AnimatePresence>
-          {error && (
-            <motion.div
-              initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-              className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl p-4 text-sm flex items-center gap-2"
-            >
-              <span>⚠️</span> {error}
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* New order notification */}
-        <AnimatePresence>
-          {newOrderFlash && (
-            <motion.div
-              initial={{ opacity: 0, y: -12, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -8 }}
-              className="bg-green-500/10 border border-green-500/30 text-green-400 rounded-2xl p-3 text-sm flex items-center gap-2"
-            >
-              <span className="animate-bounce">🔔</span> {TOAST_NEW_ORDER[waiterUiLang()]}
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Client profile */}
-        <AnimatePresence>
-          {client && !loading && (
-            <motion.div
-              key={client.id}
-              initial={{ opacity: 0, y: 24 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-              className="space-y-4"
-            >
+        {showClientSplit && client && (
+          <motion.div
+            key={client.id}
+            initial={{ opacity: 0, y: 20, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+            className="space-y-4"
+          >
               {/* Alerts */}
               {isTodayOccurrence(client.birthday) && (
                 <motion.div
@@ -824,7 +835,7 @@ export default function WaiterPage() {
                       >
                         <p className="text-base">{stat.icon}</p>
                         <p className="text-xs text-muted-foreground mt-1">{stat.label}</p>
-                        <p className="text-sm font-bold text-foreground mt-0.5 leading-none">{stat.value}</p>
+                        <p className="text-sm font-bold text-foreground mt-0.5 leading-none tabular-nums">{stat.value}</p>
                       </motion.div>
                     ))}
                   </div>
@@ -892,6 +903,12 @@ export default function WaiterPage() {
                 </div>
               </div>
 
+          </motion.div>
+        )}
+          </div>
+
+        {showClientSplit && client && (
+          <div className="min-w-0 lg:max-h-[calc(100dvh-12rem)] lg:overflow-y-auto lg:self-start">
               {/* Tabs */}
               <div className="glass rounded-3xl overflow-hidden">
                 {/* Tab bar */}
@@ -900,7 +917,7 @@ export default function WaiterPage() {
                     <button
                       key={tab}
                       onClick={() => setActiveTab(tab)}
-                      className="relative flex-1 py-4 text-sm font-medium transition-colors"
+                      className="relative flex-1 min-h-11 py-4 text-sm font-medium transition-colors"
                       style={{ color: activeTab === tab ? "#C9A84C" : undefined }}
                     >
                       {tab === "history"
@@ -924,7 +941,7 @@ export default function WaiterPage() {
                         initial={{ opacity: 0, x: -10 }}
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: 10 }}
-                        transition={{ duration: 0.2 }}
+                        transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
                         className="space-y-3"
                       >
                         {client.recentOrders.length === 0 ? (
@@ -940,9 +957,9 @@ export default function WaiterPage() {
                             return (
                               <motion.div
                                 key={order.id}
-                                initial={{ opacity: 0, y: 8 }}
+                                initial={{ opacity: 0, y: 16 }}
                                 animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: i * 0.05 }}
+                                transition={{ delay: i * 0.05, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
                               >
                                 <OrderCard
                                   order={order}
@@ -963,7 +980,7 @@ export default function WaiterPage() {
                         initial={{ opacity: 0, x: 10 }}
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: -10 }}
-                        transition={{ duration: 0.2 }}
+                        transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
                         className="space-y-3"
                       >
                         {client.familyMembers.length === 0 ? (
@@ -1015,10 +1032,52 @@ export default function WaiterPage() {
                   </AnimatePresence>
                 </div>
               </div>
+          </div>
+        )}
+        </div>
+
+        <AnimatePresence>
+          {loading && (
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="space-y-4 py-6"
+            >
+              <Skeleton className="h-44 w-full rounded-3xl" />
+              <div className="grid grid-cols-4 gap-2">
+                {[0, 1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-24 rounded-2xl" />
+                ))}
+              </div>
+              <Skeleton className="h-32 w-full rounded-2xl" />
             </motion.div>
           )}
         </AnimatePresence>
 
+        {/* Error */}
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl p-4 text-sm flex items-center gap-2"
+            >
+              <span>⚠️</span> {error}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* New order notification */}
+        <AnimatePresence>
+          {newOrderFlash && (
+            <motion.div
+              initial={{ opacity: 0, y: -12, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="bg-green-500/10 border border-green-500/30 text-green-400 rounded-2xl p-3 text-sm flex items-center gap-2"
+            >
+              <span className="animate-bounce">🔔</span> {TOAST_NEW_ORDER[waiterUiLang()]}
+            </motion.div>
+          )}
+        </AnimatePresence>
         {/* Empty state */}
         {!client && !loading && !error && !showRegister && (
           <motion.div
@@ -1073,14 +1132,14 @@ function OrderCard({
             </span>
           )}
         </div>
-        <span className="font-bold text-[#C9A84C]">${order.total}</span>
+        <span className="font-bold text-[#C9A84C] tabular-nums">${order.total}</span>
       </div>
       <div className="flex flex-wrap gap-3 text-[11px] text-muted-foreground mb-2">
         <span>
-          Food <span className="text-foreground font-semibold">${order.foodTotal}</span>
+          Food <span className="text-foreground font-semibold tabular-nums">${order.foodTotal}</span>
         </span>
         <span>
-          Drinks <span className="text-foreground font-semibold">${order.drinkTotal}</span>
+          Drinks <span className="text-foreground font-semibold tabular-nums">${order.drinkTotal}</span>
         </span>
       </div>
       <div className="flex flex-wrap gap-1.5">

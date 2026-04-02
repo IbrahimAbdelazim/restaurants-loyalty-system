@@ -19,8 +19,8 @@
     "email": "fatima@example.com",
     "birthday": "1983-07-22",
     "anniversary": "2005-06-20",
-    "tier": "VIP",
-    "points": 3800,
+    "tier": "Gold",
+    "points": 3866,
     "familyGroupId": "fg1",
     "notes": "Vegetarian. Prefers still water.",
     "createdAt": "2022-01-10"

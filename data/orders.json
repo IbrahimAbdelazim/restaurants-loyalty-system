@@ -352,5 +352,29 @@
     ],
     "total": 36,
     "notes": ""
+  },
+  {
+    "id": "o1775166290312-0",
+    "clientId": "c2",
+    "date": "2026-04-02",
+    "status": "completed",
+    "table": "1",
+    "items": [
+      {
+        "menuItemId": "m2",
+        "name": "Beef Tenderloin",
+        "quantity": 1,
+        "price": 42
+      },
+      {
+        "menuItemId": "m3",
+        "name": "Truffle Risotto",
+        "quantity": 1,
+        "price": 24
+      }
+    ],
+    "total": 66,
+    "notes": "",
+    "pointsEarned": 66
   }
 ]

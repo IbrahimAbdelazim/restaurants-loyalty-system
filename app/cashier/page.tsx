@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import type {
   ActiveVisit,
   CheckoutReceiptLine,
@@ -11,8 +10,13 @@ import type {
   MenuItem,
   OrderItem,
 } from "@/lib/types";
+import type { Dispatch, SetStateAction } from "react";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
 import { applyPercentDiscount } from "@/lib/cashier-utils";
+import { detectUiLang, networkErrorCopy } from "@/lib/toast-i18n";
+import { shouldRemoveCartItemBySwipe } from "@/lib/cart-swipe";
 
 const CATEGORIES = ["Starter", "Main", "Dessert", "Drink"] as const;
 
@@ -56,6 +60,9 @@ export default function CashierPage() {
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [lastReceipt, setLastReceipt] = useState<CheckoutReceiptLine[] | null>(null);
   const [promoPercentHint, setPromoPercentHint] = useState<number | null>(null);
+  const [menuLoading, setMenuLoading] = useState(true);
+  const [confirmBurst, setConfirmBurst] = useState(false);
+  const lastOrderAttemptRef = useRef<(() => void) | null>(null);
 
   const loadClients = useCallback(() => {
     fetch("/api/clients")
@@ -79,9 +86,23 @@ export default function CashierPage() {
 
   useEffect(() => {
     loadClients();
+    setMenuLoading(true);
     fetch("/api/menu")
       .then((r) => r.json())
-      .then(setMenu);
+      .then(setMenu)
+      .catch(() => {
+        const lang = detectUiLang();
+        const copy = networkErrorCopy(lang);
+        toast.error(copy.title, {
+          description:
+            lang === "ar" ? "تعذر تحميل القائمة." : "Could not load menu.",
+          action: {
+            label: copy.retry,
+            onClick: () => window.location.reload(),
+          },
+        });
+      })
+      .finally(() => setMenuLoading(false));
     loadVisits();
     loadShift();
   }, [loadClients, loadVisits, loadShift]);
@@ -206,6 +227,9 @@ export default function CashierPage() {
   }
 
   async function confirmOrder() {
+    lastOrderAttemptRef.current = () => {
+      void confirmOrder();
+    };
     if (orderClients.length === 0 || cart.length === 0) return;
     if (orderClients.length >= 2 && splitMode === "by_item") {
       for (const line of cart) {
@@ -241,10 +265,14 @@ export default function CashierPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setSuccessMsg(data.message ?? "Error");
-        setTimeout(() => setSuccessMsg(null), 4000);
+        const msg =
+          typeof data.message === "string" ? data.message : "Error";
+        const lang = detectUiLang();
+        toast.error(lang === "ar" ? "فشل الطلب" : "Order failed", {
+          description: msg,
+        });
         return;
       }
 
@@ -258,6 +286,9 @@ export default function CashierPage() {
       setSuccessMsg(parts.join(" · "));
       setTimeout(() => setSuccessMsg(null), 5000);
 
+      setConfirmBurst(true);
+      setTimeout(() => setConfirmBurst(false), 900);
+
       setCart([]);
       setNotes("");
       setPromoCode("");
@@ -265,6 +296,19 @@ export default function CashierPage() {
       loadClients();
       loadVisits();
       loadShift();
+    } catch {
+      const lang = detectUiLang();
+      const copy = networkErrorCopy(lang);
+      toast.error(copy.title, {
+        description:
+          lang === "ar"
+            ? "تعذر إرسال الطلب."
+            : "Could not send the order.",
+        action: {
+          label: copy.retry,
+          onClick: () => lastOrderAttemptRef.current?.(),
+        },
+      });
     } finally {
       setSubmitting(false);
     }
@@ -280,15 +324,15 @@ export default function CashierPage() {
 
   return (
     <div className="h-screen bg-background flex flex-col overflow-hidden">
-      <header className="shrink-0 border-b border-white/[0.06] bg-background/80 backdrop-blur-xl px-6 py-4">
+      <header className="shrink-0 border-b border-white/[0.06] bg-background/80 backdrop-blur-xl px-4 py-3 lg:px-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-white/[0.06] flex items-center justify-center text-lg border border-white/10">
               🧾
             </div>
             <div>
-              <p className="font-bold text-sm text-foreground leading-none">Cashier App</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">POS · Order Entry</p>
+              <p className="font-bold text-base text-foreground leading-none">Cashier App</p>
+              <p className="text-xs text-muted-foreground mt-0.5">POS · Order Entry</p>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -352,7 +396,7 @@ export default function CashierPage() {
 
         {/* Menu */}
         <div className="flex-1 flex flex-col overflow-hidden border-r border-white/[0.06] min-w-0">
-          <div className="shrink-0 p-3 border-b border-white/[0.06] space-y-2">
+          <div className="shrink-0 p-2 sm:p-3 border-b border-white/[0.06] space-y-2">
             <Input
               placeholder="Search menu…"
               value={menuSearch}
@@ -373,7 +417,7 @@ export default function CashierPage() {
                       key={cat}
                       type="button"
                       onClick={() => setActiveCategory(cat)}
-                      className="relative shrink-0 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200"
+                      className="relative shrink-0 min-h-11 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200"
                       style={{
                         background:
                           activeCategory === cat
@@ -399,7 +443,14 @@ export default function CashierPage() {
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 min-h-0">
+          <div className="flex-1 overflow-y-auto p-3 sm:p-4 min-h-0">
+            {menuLoading ? (
+              <div className="grid grid-cols-2 min-[1280px]:grid-cols-3 gap-2 sm:gap-3">
+                {Array.from({ length: 9 }).map((_, i) => (
+                  <Skeleton key={i} className="h-28 rounded-2xl" />
+                ))}
+              </div>
+            ) : (
             <AnimatePresence mode="wait">
               <motion.div
                 key={menuSearch || activeCategory}
@@ -407,7 +458,7 @@ export default function CashierPage() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2 }}
-                className="grid grid-cols-2 lg:grid-cols-3 gap-3"
+                className="grid grid-cols-2 min-[1280px]:grid-cols-3 gap-2 sm:gap-3"
               >
                 {visibleMenu.map((item, i) => {
                   const inCart = cart.find((c) => c.menuItemId === item.id);
@@ -430,14 +481,14 @@ export default function CashierPage() {
                       }}
                     >
                       {inCart && (
-                        <span className="absolute top-2.5 right-2.5 w-6 h-6 gold-gradient text-[#0F0D09] text-xs font-bold rounded-full flex items-center justify-center shadow-lg">
+                        <span className="absolute top-2.5 right-2.5 min-w-7 min-h-7 h-7 px-1.5 gold-gradient text-[#0F0D09] text-xs font-bold rounded-full inline-flex items-center justify-center shadow-lg tabular-nums">
                           {inCart.quantity}
                         </span>
                       )}
                       <p className="font-semibold text-sm text-foreground pr-6">{item.name}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">{item.category}</p>
                       <p
-                        className="text-sm mt-1"
+                        className="text-sm mt-1 tabular-nums"
                         style={{ color: inCart ? "#C9A84C" : "#6b7280" }}
                       >
                         ${item.price}
@@ -447,6 +498,7 @@ export default function CashierPage() {
                 })}
               </motion.div>
             </AnimatePresence>
+            )}
           </div>
         </div>
 
@@ -588,76 +640,24 @@ export default function CashierPage() {
                 </motion.p>
               ) : (
                 cart.map((item) => (
-                  <motion.div
+                  <CashierCartRow
                     key={item.menuItemId}
-                    layout
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -20 }}
-                    transition={{ duration: 0.2 }}
-                    className="flex flex-col gap-1"
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{item.name}</p>
-                        <p className="text-xs text-muted-foreground">${item.price} ea</p>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => removeOne(item.menuItemId)}
-                          className="w-7 h-7 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-sm font-bold transition-colors flex items-center justify-center"
-                        >
-                          −
-                        </button>
-                        <span className="w-6 text-center text-sm font-bold">{item.quantity}</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const mi = menu.find((m) => m.id === item.menuItemId);
-                            if (mi) addToCart(mi);
-                          }}
-                          className="w-7 h-7 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-sm font-bold transition-colors flex items-center justify-center"
-                        >
-                          +
-                        </button>
-                      </div>
-                      <span className="w-12 text-right text-sm font-semibold text-[#C9A84C] shrink-0">
-                        ${item.price * item.quantity}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => removeItem(item.menuItemId)}
-                        className="w-6 h-6 rounded-lg hover:bg-red-500/20 text-muted-foreground hover:text-red-400 text-xs transition-colors flex items-center justify-center shrink-0"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                    {orderClients.length >= 2 && splitMode === "by_item" && (
-                      <select
-                        className="text-[10px] bg-white/[0.06] border border-white/10 rounded-lg px-2 py-1 max-w-full"
-                        value={assignment[item.menuItemId] ?? ""}
-                        onChange={(e) =>
-                          setAssignment((a) => ({ ...a, [item.menuItemId]: e.target.value }))
-                        }
-                      >
-                        <option value="">Assign…</option>
-                        {orderClients.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </motion.div>
+                    item={item}
+                    menu={menu}
+                    orderClients={orderClients}
+                    splitMode={splitMode}
+                    assignment={assignment}
+                    setAssignment={setAssignment}
+                    removeOne={removeOne}
+                    removeItem={removeItem}
+                    addToCart={addToCart}
+                  />
                 ))
               )}
             </AnimatePresence>
           </div>
 
-          <Separator className="bg-white/[0.06]" />
-
-          <div className="shrink-0 p-4 space-y-3">
+          <div className="shrink-0 border-t border-white/[0.06] bg-background/95 backdrop-blur-sm p-3 space-y-3">
             <Input
               placeholder="Order notes…"
               value={notes}
@@ -665,25 +665,25 @@ export default function CashierPage() {
               className="h-9 bg-white/[0.04] border-white/10 rounded-xl text-sm"
             />
 
-            <div className="flex justify-between items-baseline text-sm">
-              <span className="text-xs text-muted-foreground">
+            <div className="flex justify-between items-baseline gap-2 text-sm">
+              <span className="text-xs text-muted-foreground tabular-nums shrink-0">
                 {cartCount} item{cartCount !== 1 ? "s" : ""}
               </span>
-              <div className="text-right space-y-0.5">
+              <div className="text-right space-y-0.5 min-w-0">
                 <div>
                   <span className="text-xs text-muted-foreground mr-2">Subtotal</span>
-                  <span className="font-semibold">${subtotal.toFixed(2)}</span>
+                  <span className="font-semibold tabular-nums">${subtotal.toFixed(2)}</span>
                 </div>
                 {discountPct > 0 && (
                   <div>
                     <span className="text-xs text-muted-foreground mr-2">Est. total</span>
-                    <span className="text-xl font-bold gold-text">${estimatedTotal.toFixed(2)}</span>
+                    <span className="text-xl font-bold gold-text tabular-nums">${estimatedTotal.toFixed(2)}</span>
                   </div>
                 )}
                 {discountPct === 0 && (
                   <div>
                     <span className="text-xs text-muted-foreground mr-2">Total</span>
-                    <span className="text-3xl font-bold gold-text">${subtotal.toFixed(2)}</span>
+                    <span className="text-2xl sm:text-3xl font-bold gold-text tabular-nums">${subtotal.toFixed(2)}</span>
                   </div>
                 )}
               </div>
@@ -694,8 +694,8 @@ export default function CashierPage() {
               onClick={confirmOrder}
               disabled={!canConfirm || submitting}
               whileHover={!canConfirm || submitting ? {} : { scale: 1.01 }}
-              whileTap={!canConfirm || submitting ? {} : { scale: 0.98 }}
-              className="w-full py-4 rounded-2xl font-bold text-base transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+              whileTap={!canConfirm || submitting ? {} : { scale: 0.97 }}
+              className="relative w-full min-h-[52px] py-4 rounded-2xl font-bold text-lg transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed overflow-hidden"
               style={{
                 background:
                   !canConfirm || cart.length === 0
@@ -706,6 +706,20 @@ export default function CashierPage() {
                   !canConfirm || cart.length === 0 ? "none" : "0 4px 20px rgba(201,168,76,0.3)",
               }}
             >
+              <AnimatePresence>
+                {confirmBurst && (
+                  <motion.span
+                    key="burst"
+                    className="pointer-events-none absolute inset-0 flex items-center justify-center text-3xl"
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: [0, 1.25, 1], opacity: [0, 1, 0] }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+                  >
+                    ✓
+                  </motion.span>
+                )}
+              </AnimatePresence>
               {submitting ? (
                 <span className="flex items-center justify-center gap-2">
                   <span className="w-4 h-4 border-2 border-[#0F0D09]/30 border-t-[#0F0D09] rounded-full animate-spin" />
@@ -779,5 +793,127 @@ export default function CashierPage() {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+function CashierCartRow({
+  item,
+  menu,
+  orderClients,
+  splitMode,
+  assignment,
+  setAssignment,
+  removeOne,
+  removeItem,
+  addToCart,
+}: {
+  item: OrderItem;
+  menu: MenuItem[];
+  orderClients: Client[];
+  splitMode: SplitMode;
+  assignment: Record<string, string>;
+  setAssignment: Dispatch<SetStateAction<Record<string, string>>>;
+  removeOne: (id: string) => void;
+  removeItem: (id: string) => void;
+  addToCart: (item: MenuItem) => void;
+}) {
+  const longPress = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pointerStart = useRef<{ x: number; y: number } | null>(null);
+
+  const clearLp = () => {
+    if (longPress.current) {
+      clearTimeout(longPress.current);
+      longPress.current = null;
+    }
+  };
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -20 }}
+      transition={{ duration: 0.2 }}
+      drag="x"
+      dragConstraints={{ left: 0, right: 100 }}
+      dragElastic={0.08}
+      onDragStart={clearLp}
+      onDragEnd={(_, info) => {
+        if (shouldRemoveCartItemBySwipe(info.offset.x)) {
+          removeItem(item.menuItemId);
+        }
+      }}
+      className="flex flex-col gap-1 rounded-xl border border-white/[0.06] bg-white/[0.02] pl-2 pr-1 py-2 touch-pan-y"
+      onPointerDown={(e) => {
+        pointerStart.current = { x: e.clientX, y: e.clientY };
+        longPress.current = setTimeout(() => {
+          removeItem(item.menuItemId);
+        }, 520);
+      }}
+      onPointerMove={(e) => {
+        if (!pointerStart.current) return;
+        const dx = e.clientX - pointerStart.current.x;
+        const dy = e.clientY - pointerStart.current.y;
+        if (dx * dx + dy * dy > 144) clearLp();
+      }}
+      onPointerUp={() => {
+        pointerStart.current = null;
+        clearLp();
+      }}
+      onPointerCancel={clearLp}
+    >
+      <div className="flex items-center gap-2">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate">{item.name}</p>
+          <p className="text-xs text-muted-foreground tabular-nums">${item.price} ea</p>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={() => removeOne(item.menuItemId)}
+            className="min-h-11 min-w-11 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-sm font-bold transition-colors flex items-center justify-center"
+          >
+            −
+          </button>
+          <span className="w-7 text-center text-sm font-bold tabular-nums">{item.quantity}</span>
+          <button
+            type="button"
+            onClick={() => {
+              const mi = menu.find((m) => m.id === item.menuItemId);
+              if (mi) addToCart(mi);
+            }}
+            className="min-h-11 min-w-11 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-sm font-bold transition-colors flex items-center justify-center"
+          >
+            +
+          </button>
+        </div>
+        <span className="w-14 text-right text-sm font-semibold text-[#C9A84C] shrink-0 tabular-nums">
+          ${item.price * item.quantity}
+        </span>
+        <button
+          type="button"
+          onClick={() => removeItem(item.menuItemId)}
+          className="min-h-11 min-w-11 rounded-lg hover:bg-red-500/20 text-muted-foreground hover:text-red-400 text-xs transition-colors flex items-center justify-center shrink-0"
+        >
+          ✕
+        </button>
+      </div>
+      {orderClients.length >= 2 && splitMode === "by_item" && (
+        <select
+          className="text-[10px] bg-white/[0.06] border border-white/10 rounded-lg px-2 py-1 max-w-full min-h-9"
+          value={assignment[item.menuItemId] ?? ""}
+          onChange={(e) =>
+            setAssignment((a) => ({ ...a, [item.menuItemId]: e.target.value }))
+          }
+        >
+          <option value="">Assign…</option>
+          {orderClients.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      )}
+    </motion.div>
   );
 }

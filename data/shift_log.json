@@ -1,1 +1,19 @@
-[]
+[
+  {
+    "confirmedAt": "2026-04-02T21:44:50.317Z",
+    "table": "1",
+    "orderIds": [
+      "o1775166290312-0"
+    ],
+    "totalRevenue": 66,
+    "clientSummaries": [
+      {
+        "clientId": "c2",
+        "name": "Fatima Al-Rashid",
+        "pointsEarned": 66,
+        "total": 66
+      }
+    ],
+    "id": "sl1"
+  }
+]
