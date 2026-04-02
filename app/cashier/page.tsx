@@ -1,55 +1,169 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import type { Client, MenuItem, OrderItem } from "@/lib/types";
+import type {
+  ActiveVisit,
+  CheckoutReceiptLine,
+  Client,
+  MenuItem,
+  OrderItem,
+} from "@/lib/types";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { applyPercentDiscount } from "@/lib/cashier-utils";
 
 const CATEGORIES = ["Starter", "Main", "Dessert", "Drink"] as const;
 
 const TIER_CONFIG: Record<string, { color: string; bg: string }> = {
   Bronze: { color: "#cd7f32", bg: "rgba(205,127,50,0.15)" },
-  Silver: { color: "#aaa",    bg: "rgba(170,170,170,0.15)" },
-  Gold:   { color: "#C9A84C", bg: "rgba(201,168,76,0.15)" },
-  VIP:    { color: "#a78bfa", bg: "rgba(167,139,250,0.15)" },
+  Silver: { color: "#aaa", bg: "rgba(170,170,170,0.15)" },
+  Gold: { color: "#C9A84C", bg: "rgba(201,168,76,0.15)" },
+  VIP: { color: "#a78bfa", bg: "rgba(167,139,250,0.15)" },
 };
 
 const CAT_ICONS: Record<string, string> = {
-  Starter: "🥗", Main: "🍽️", Dessert: "🍮", Drink: "🥂",
+  Starter: "🥗",
+  Main: "🍽️",
+  Dessert: "🍮",
+  Drink: "🥂",
 };
+
+type SplitMode = "even" | "by_item";
 
 export default function CashierPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [menu, setMenu] = useState<MenuItem[]>([]);
-  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-  const [clientSearch, setClientSearch] = useState("");
-  const [showClientDropdown, setShowClientDropdown] = useState(false);
+  const [orderClients, setOrderClients] = useState<Client[]>([]);
+  const [guestSearch, setGuestSearch] = useState("");
+  const [showGuestDropdown, setShowGuestDropdown] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string>("Main");
+  const [menuSearch, setMenuSearch] = useState("");
   const [table, setTable] = useState("1");
   const [notes, setNotes] = useState("");
+  const [promoCode, setPromoCode] = useState("");
+  const [splitMode, setSplitMode] = useState<SplitMode>("even");
+  const [assignment, setAssignment] = useState<Record<string, string>>({});
   const [cart, setCart] = useState<OrderItem[]>([]);
-  const [success, setSuccess] = useState(false);
+  const [visits, setVisits] = useState<ActiveVisit[]>([]);
+  const [shiftSummary, setShiftSummary] = useState<{
+    orderCount: number;
+    totalRevenue: number;
+  } | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [receiptOpen, setReceiptOpen] = useState(false);
+  const [lastReceipt, setLastReceipt] = useState<CheckoutReceiptLine[] | null>(null);
+  const [promoPercentHint, setPromoPercentHint] = useState<number | null>(null);
 
-  useEffect(() => {
-    fetch("/api/clients").then((r) => r.json()).then(setClients);
-    fetch("/api/menu").then((r) => r.json()).then(setMenu);
+  const loadClients = useCallback(() => {
+    fetch("/api/clients")
+      .then((r) => r.json())
+      .then((d: Client[]) => setClients(Array.isArray(d) ? d : []));
   }, []);
 
-  const filteredClients = clients.filter(
+  const loadVisits = useCallback(() => {
+    fetch("/api/visits")
+      .then((r) => r.json())
+      .then((d: { visits?: ActiveVisit[] }) => setVisits(d.visits ?? []));
+  }, []);
+
+  const loadShift = useCallback(() => {
+    fetch("/api/shift-log")
+      .then((r) => r.json())
+      .then((d: { summary?: { orderCount: number; totalRevenue: number } }) => {
+        if (d.summary) setShiftSummary(d.summary);
+      });
+  }, []);
+
+  useEffect(() => {
+    loadClients();
+    fetch("/api/menu")
+      .then((r) => r.json())
+      .then(setMenu);
+    loadVisits();
+    loadShift();
+  }, [loadClients, loadVisits, loadShift]);
+
+  useEffect(() => {
+    if (!promoCode.trim()) {
+      setPromoPercentHint(null);
+      return;
+    }
+    const ac = new AbortController();
+    fetch(`/api/promos?code=${encodeURIComponent(promoCode.trim())}`, {
+      signal: ac.signal,
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { percentDiscount?: number } | null) => {
+        if (d && typeof d.percentDiscount === "number") {
+          setPromoPercentHint(d.percentDiscount);
+        } else {
+          setPromoPercentHint(null);
+        }
+      })
+      .catch(() => setPromoPercentHint(null));
+    return () => ac.abort();
+  }, [promoCode]);
+
+  useEffect(() => {
+    const first = orderClients[0];
+    if (!first) return;
+    setAssignment((a) => {
+      const next = { ...a };
+      for (const line of cart) {
+        if (!next[line.menuItemId]) next[line.menuItemId] = first.id;
+      }
+      return next;
+    });
+  }, [orderClients, cart]);
+
+  const filteredGuests = clients.filter(
     (c) =>
-      c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
-      c.phone.includes(clientSearch)
+      c.name.toLowerCase().includes(guestSearch.toLowerCase()) ||
+      c.phone.includes(guestSearch)
   );
 
-  const visibleMenu = menu.filter((m) => m.category === activeCategory);
+  const visibleMenu = useMemo(() => {
+    const q = menuSearch.trim().toLowerCase();
+    if (q) return menu.filter((m) => m.name.toLowerCase().includes(q));
+    return menu.filter((m) => m.category === activeCategory);
+  }, [menu, menuSearch, activeCategory]);
+
+  const subtotal = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const discountPct = promoPercentHint ?? 0;
+  const estimatedTotal = applyPercentDiscount(subtotal, discountPct);
+
+  function addGuest(c: Client) {
+    setOrderClients((prev) => (prev.some((x) => x.id === c.id) ? prev : [...prev, c]));
+    setGuestSearch("");
+    setShowGuestDropdown(false);
+  }
+
+  function removeGuest(id: string) {
+    setOrderClients((prev) => prev.filter((x) => x.id !== id));
+    setAssignment((a) => {
+      const next = { ...a };
+      for (const k of Object.keys(next)) {
+        if (next[k] === id) delete next[k];
+      }
+      return next;
+    });
+  }
 
   function addToCart(item: MenuItem) {
     setCart((prev) => {
       const existing = prev.find((i) => i.menuItemId === item.id);
-      if (existing) return prev.map((i) => i.menuItemId === item.id ? { ...i, quantity: i.quantity + 1 } : i);
+      if (existing) {
+        return prev.map((i) =>
+          i.menuItemId === item.id ? { ...i, quantity: i.quantity + 1 } : i
+        );
+      }
+      const first = orderClients[0];
+      if (first) {
+        setAssignment((a) => ({ ...a, [item.id]: first.id }));
+      }
       return [...prev, { menuItemId: item.id, name: item.name, quantity: 1, price: item.price }];
     });
   }
@@ -58,39 +172,114 @@ export default function CashierPage() {
     setCart((prev) => {
       const ex = prev.find((i) => i.menuItemId === menuItemId);
       if (!ex) return prev;
-      if (ex.quantity === 1) return prev.filter((i) => i.menuItemId !== menuItemId);
-      return prev.map((i) => i.menuItemId === menuItemId ? { ...i, quantity: i.quantity - 1 } : i);
+      if (ex.quantity === 1) {
+        setAssignment((a) => {
+          const n = { ...a };
+          delete n[menuItemId];
+          return n;
+        });
+        return prev.filter((i) => i.menuItemId !== menuItemId);
+      }
+      return prev.map((i) =>
+        i.menuItemId === menuItemId ? { ...i, quantity: i.quantity - 1 } : i
+      );
     });
   }
 
   function removeItem(menuItemId: string) {
     setCart((prev) => prev.filter((i) => i.menuItemId !== menuItemId));
+    setAssignment((a) => {
+      const n = { ...a };
+      delete n[menuItemId];
+      return n;
+    });
   }
 
-  const total = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
   const cartCount = cart.reduce((sum, i) => sum + i.quantity, 0);
 
+  function pickVisit(v: ActiveVisit) {
+    const c = clients.find((x) => x.id === v.clientId);
+    if (c) {
+      setOrderClients([c]);
+      setTable(v.table || "1");
+    }
+  }
+
   async function confirmOrder() {
-    if (!selectedClient || cart.length === 0) return;
+    if (orderClients.length === 0 || cart.length === 0) return;
+    if (orderClients.length >= 2 && splitMode === "by_item") {
+      for (const line of cart) {
+        const aid = assignment[line.menuItemId];
+        if (!aid || !orderClients.some((c) => c.id === aid)) return;
+      }
+    }
     setSubmitting(true);
     try {
-      await fetch("/api/orders", {
+      const items = cart.map((i) => ({
+        menuItemId: i.menuItemId,
+        quantity: i.quantity,
+      }));
+      const body: Record<string, unknown> = {
+        table,
+        notes,
+        items,
+      };
+      if (promoCode.trim()) body.promoCode = promoCode.trim();
+
+      if (orderClients.length === 1) {
+        body.clientId = orderClients[0]!.id;
+      } else {
+        body.splitMode = splitMode;
+        body.clientIds = orderClients.map((c) => c.id);
+        if (splitMode === "by_item") {
+          body.assignment = assignment;
+        }
+      }
+
+      const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId: selectedClient.id, table, items: cart, total, notes }),
+        body: JSON.stringify(body),
       });
-      setSuccess(true);
+      const data = await res.json();
+      if (!res.ok) {
+        setSuccessMsg(data.message ?? "Error");
+        setTimeout(() => setSuccessMsg(null), 4000);
+        return;
+      }
+
+      const receipt: CheckoutReceiptLine[] = data.receipt ?? [];
+      setLastReceipt(receipt);
+      setReceiptOpen(true);
+
+      const parts = receipt.map(
+        (r) => `Earned ${r.pointsEarned} pts · ${r.name} now ${r.pointsTotal} total`
+      );
+      setSuccessMsg(parts.join(" · "));
+      setTimeout(() => setSuccessMsg(null), 5000);
+
       setCart([]);
       setNotes("");
-      setTimeout(() => setSuccess(false), 3500);
+      setPromoCode("");
+      setAssignment({});
+      loadClients();
+      loadVisits();
+      loadShift();
     } finally {
       setSubmitting(false);
     }
   }
 
+  const canConfirm =
+    orderClients.length > 0 &&
+    cart.length > 0 &&
+    !(orderClients.length >= 2 && splitMode === "by_item" && cart.some((line) => {
+      const aid = assignment[line.menuItemId];
+      return !aid || !orderClients.some((c) => c.id === aid);
+    }));
+
   return (
     <div className="h-screen bg-background flex flex-col overflow-hidden">
-      {/* Header */}
       <header className="shrink-0 border-b border-white/[0.06] bg-background/80 backdrop-blur-xl px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -102,74 +291,118 @@ export default function CashierPage() {
               <p className="text-[10px] text-muted-foreground mt-0.5">POS · Order Entry</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-              Connected
+          <div className="flex items-center gap-4">
+            {shiftSummary && (
+              <div className="text-right text-[10px] text-muted-foreground hidden sm:block">
+                <p className="uppercase tracking-widest font-bold text-foreground/70">Today</p>
+                <p>
+                  {shiftSummary.orderCount} orders · ${shiftSummary.totalRevenue.toFixed(2)}
+                </p>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                Connected
+              </div>
+              <ThemeToggle />
             </div>
-            <ThemeToggle />
           </div>
         </div>
       </header>
 
-      {/* Success toast */}
       <AnimatePresence>
-        {success && (
+        {successMsg && (
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             className="shrink-0 bg-green-500/15 border-b border-green-500/20 px-6 py-3 flex items-center gap-3 text-green-400"
           >
-            <motion.span
-              initial={{ scale: 0 }} animate={{ scale: 1 }}
-              transition={{ type: "spring", stiffness: 400, damping: 15 }}
-              className="text-xl"
-            >
-              ✅
-            </motion.span>
-            <span className="font-semibold text-sm">Order confirmed — synced to loyalty system!</span>
+            <span className="text-xl">✅</span>
+            <span className="font-semibold text-sm">{successMsg}</span>
           </motion.div>
         )}
       </AnimatePresence>
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* LEFT — Menu */}
-        <div className="flex-1 flex flex-col overflow-hidden border-r border-white/[0.06]">
-          {/* Category tabs */}
-          <div className="shrink-0 flex gap-1 p-3 border-b border-white/[0.06] overflow-x-auto">
-            {CATEGORIES.map((cat) => {
-              const count = cart.filter((i) => {
-                const mi = menu.find((m) => m.id === i.menuItemId);
-                return mi?.category === cat;
-              }).reduce((s, i) => s + i.quantity, 0);
-              return (
+      <div className="flex flex-1 overflow-hidden min-h-0">
+        {/* Active tables */}
+        <div className="w-36 shrink-0 border-r border-white/[0.06] flex flex-col bg-white/[0.02] hidden md:flex">
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest p-3 pb-1">
+            Tables
+          </p>
+          <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
+            {visits.length === 0 ? (
+              <p className="text-[10px] text-muted-foreground/60 px-1">No active visits</p>
+            ) : (
+              visits.map((v) => (
                 <button
-                  key={cat}
-                  onClick={() => setActiveCategory(cat)}
-                  className="relative shrink-0 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200"
-                  style={{
-                    background: activeCategory === cat ? "rgba(201,168,76,0.15)" : "rgba(255,255,255,0.04)",
-                    color: activeCategory === cat ? "#C9A84C" : undefined,
-                    border: activeCategory === cat ? "1px solid rgba(201,168,76,0.3)" : "1px solid rgba(255,255,255,0.06)",
-                  }}
+                  key={v.clientId}
+                  type="button"
+                  onClick={() => pickVisit(v)}
+                  className="w-full text-left rounded-xl px-2 py-2 bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.08] transition-colors"
                 >
-                  {CAT_ICONS[cat]} {cat}
-                  {count > 0 && (
-                    <span className="ml-1.5 bg-[#C9A84C] text-[#0F0D09] text-[10px] font-bold w-4 h-4 rounded-full inline-flex items-center justify-center">
-                      {count}
-                    </span>
-                  )}
+                  <p className="text-[10px] font-bold text-[#C9A84C]">T{v.table}</p>
+                  <p className="text-xs font-medium truncate">{v.name}</p>
                 </button>
-              );
-            })}
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Menu */}
+        <div className="flex-1 flex flex-col overflow-hidden border-r border-white/[0.06] min-w-0">
+          <div className="shrink-0 p-3 border-b border-white/[0.06] space-y-2">
+            <Input
+              placeholder="Search menu…"
+              value={menuSearch}
+              onChange={(e) => setMenuSearch(e.target.value)}
+              className="h-9 bg-white/[0.04] border-white/10 rounded-xl text-sm"
+            />
+            {!menuSearch.trim() && (
+              <div className="flex gap-1 overflow-x-auto">
+                {CATEGORIES.map((cat) => {
+                  const count = cart
+                    .filter((i) => {
+                      const mi = menu.find((m) => m.id === i.menuItemId);
+                      return mi?.category === cat;
+                    })
+                    .reduce((s, i) => s + i.quantity, 0);
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setActiveCategory(cat)}
+                      className="relative shrink-0 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200"
+                      style={{
+                        background:
+                          activeCategory === cat
+                            ? "rgba(201,168,76,0.15)"
+                            : "rgba(255,255,255,0.04)",
+                        color: activeCategory === cat ? "#C9A84C" : undefined,
+                        border:
+                          activeCategory === cat
+                            ? "1px solid rgba(201,168,76,0.3)"
+                            : "1px solid rgba(255,255,255,0.06)",
+                      }}
+                    >
+                      {CAT_ICONS[cat]} {cat}
+                      {count > 0 && (
+                        <span className="ml-1.5 bg-[#C9A84C] text-[#0F0D09] text-[10px] font-bold w-4 h-4 rounded-full inline-flex items-center justify-center">
+                          {count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          {/* Menu grid */}
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-y-auto p-4 min-h-0">
             <AnimatePresence mode="wait">
               <motion.div
-                key={activeCategory}
+                key={menuSearch || activeCategory}
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
@@ -181,6 +414,7 @@ export default function CashierPage() {
                   return (
                     <motion.button
                       key={item.id}
+                      type="button"
                       initial={{ opacity: 0, scale: 0.95 }}
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ delay: i * 0.04 }}
@@ -190,7 +424,9 @@ export default function CashierPage() {
                       className="relative text-left p-4 rounded-2xl border transition-all duration-200"
                       style={{
                         background: inCart ? "rgba(201,168,76,0.12)" : "rgba(255,255,255,0.04)",
-                        borderColor: inCart ? "rgba(201,168,76,0.4)" : "rgba(255,255,255,0.07)",
+                        borderColor: inCart
+                          ? "rgba(201,168,76,0.4)"
+                          : "rgba(255,255,255,0.07)",
                       }}
                     >
                       {inCart && (
@@ -199,7 +435,11 @@ export default function CashierPage() {
                         </span>
                       )}
                       <p className="font-semibold text-sm text-foreground pr-6">{item.name}</p>
-                      <p className="text-sm mt-1" style={{ color: inCart ? "#C9A84C" : "#6b7280" }}>
+                      <p className="text-xs text-muted-foreground mt-0.5">{item.category}</p>
+                      <p
+                        className="text-sm mt-1"
+                        style={{ color: inCart ? "#C9A84C" : "#6b7280" }}
+                      >
                         ${item.price}
                       </p>
                     </motion.button>
@@ -210,85 +450,110 @@ export default function CashierPage() {
           </div>
         </div>
 
-        {/* RIGHT — Order panel */}
-        <div className="w-88 shrink-0 flex flex-col overflow-hidden" style={{ width: "22rem" }}>
-          {/* Client selector */}
+        {/* Order panel */}
+        <div
+          className="w-88 shrink-0 flex flex-col overflow-hidden min-h-0"
+          style={{ width: "min(22rem, 100vw)" }}
+        >
           <div className="shrink-0 p-4 border-b border-white/[0.06] space-y-2">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Guest</p>
-
-            {!selectedClient ? (
-              <div className="relative">
-                <Input
-                  placeholder="Search guest..."
-                  value={clientSearch}
-                  onChange={(e) => { setClientSearch(e.target.value); setShowClientDropdown(true); }}
-                  onFocus={() => setShowClientDropdown(true)}
-                  className="h-10 bg-white/[0.04] border-white/10 rounded-xl text-sm"
-                />
-                <AnimatePresence>
-                  {showClientDropdown && clientSearch && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 4 }}
-                      className="absolute z-50 top-full left-0 right-0 mt-1 rounded-xl border border-white/10 overflow-hidden"
-                      style={{ background: "#1a1a1a" }}
-                    >
-                      {filteredClients.slice(0, 5).map((c) => {
-                        const t = TIER_CONFIG[c.tier];
-                        return (
-                          <button
-                            key={c.id}
-                            className="w-full text-left px-3 py-2.5 hover:bg-white/[0.06] transition-colors flex items-center gap-2.5 text-sm"
-                            onClick={() => {
-                              setSelectedClient(c);
-                              setClientSearch(c.name);
-                              setShowClientDropdown(false);
-                            }}
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+              Guests
+            </p>
+            <div className="relative">
+              <Input
+                placeholder="Add guest…"
+                value={guestSearch}
+                onChange={(e) => {
+                  setGuestSearch(e.target.value);
+                  setShowGuestDropdown(true);
+                }}
+                onFocus={() => setShowGuestDropdown(true)}
+                className="h-10 bg-white/[0.04] border-white/10 rounded-xl text-sm"
+              />
+              <AnimatePresence>
+                {showGuestDropdown && guestSearch && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 4 }}
+                    className="absolute z-50 top-full left-0 right-0 mt-1 rounded-xl border border-white/10 overflow-hidden max-h-48 overflow-y-auto"
+                    style={{ background: "#1a1a1a" }}
+                  >
+                    {filteredGuests.slice(0, 6).map((c) => {
+                      const t = TIER_CONFIG[c.tier];
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          className="w-full text-left px-3 py-2.5 hover:bg-white/[0.06] transition-colors flex items-center gap-2 text-sm"
+                          onClick={() => addGuest(c)}
+                        >
+                          <span className="font-medium text-foreground truncate">{c.name}</span>
+                          <span
+                            className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                            style={{ color: t.color, background: t.bg }}
                           >
-                            <span className="font-medium text-foreground truncate">{c.name}</span>
-                            <span className="text-muted-foreground text-xs shrink-0">{c.phone}</span>
-                            <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
-                              style={{ color: t.color, background: t.bg }}>
-                              {c.tier}
-                            </span>
-                          </button>
-                        );
-                      })}
-                      {filteredClients.length === 0 && (
-                        <p className="text-sm text-muted-foreground p-3">No guests found.</p>
-                      )}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            ) : (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.97 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="flex items-center gap-2.5 bg-white/[0.05] rounded-xl px-3 py-2.5 border border-white/[0.08]"
-              >
-                <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
-                  style={{ background: TIER_CONFIG[selectedClient.tier].bg, color: TIER_CONFIG[selectedClient.tier].color }}>
-                  {selectedClient.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate">{selectedClient.name}</p>
-                  <p className="text-xs text-muted-foreground">{selectedClient.phone}</p>
-                </div>
-                <button
-                  onClick={() => { setSelectedClient(null); setClientSearch(""); }}
-                  className="text-muted-foreground hover:text-foreground text-sm w-6 h-6 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors"
+                            {c.tier}
+                          </span>
+                        </button>
+                      );
+                    })}
+                    {filteredGuests.length === 0 && (
+                      <p className="text-sm text-muted-foreground p-3">No guests found.</p>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {orderClients.map((c) => (
+                <span
+                  key={c.id}
+                  className="inline-flex items-center gap-1 pl-2 pr-1 py-1 rounded-lg bg-white/[0.06] text-xs border border-white/[0.08]"
                 >
-                  ✕
+                  <span className="truncate max-w-[120px]">{c.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeGuest(c.id)}
+                    className="w-5 h-5 rounded hover:bg-white/10 text-muted-foreground"
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))}
+            </div>
+            {orderClients.length >= 2 && (
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setSplitMode("even")}
+                  className={`flex-1 text-xs py-2 rounded-lg border ${
+                    splitMode === "even"
+                      ? "border-[#C9A84C] bg-[#C9A84C]/15 text-[#C9A84C]"
+                      : "border-white/10"
+                  }`}
+                >
+                  Split even
                 </button>
-              </motion.div>
+                <button
+                  type="button"
+                  onClick={() => setSplitMode("by_item")}
+                  className={`flex-1 text-xs py-2 rounded-lg border ${
+                    splitMode === "by_item"
+                      ? "border-[#C9A84C] bg-[#C9A84C]/15 text-[#C9A84C]"
+                      : "border-white/10"
+                  }`}
+                >
+                  By item
+                </button>
+              </div>
             )}
           </div>
 
-          {/* Table */}
           <div className="shrink-0 px-4 py-3 border-b border-white/[0.06] flex items-center gap-3">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest shrink-0">Table</p>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest shrink-0">
+              Table
+            </p>
             <Input
               value={table}
               onChange={(e) => setTable(e.target.value)}
@@ -296,12 +561,27 @@ export default function CashierPage() {
             />
           </div>
 
-          {/* Cart */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          <div className="shrink-0 px-4 py-2 border-b border-white/[0.06]">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">
+              Promo
+            </p>
+            <Input
+              placeholder="Code…"
+              value={promoCode}
+              onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+              className="h-9 bg-white/[0.04] border-white/10 rounded-xl text-sm uppercase"
+            />
+            {promoPercentHint != null && (
+              <p className="text-[10px] text-[#C9A84C] mt-1">{promoPercentHint}% off if valid</p>
+            )}
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 space-y-2 min-h-0">
             <AnimatePresence initial={false}>
               {cart.length === 0 ? (
                 <motion.p
-                  initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
                   className="text-center text-muted-foreground/40 text-sm py-10"
                 >
                   Tap items to add them
@@ -315,30 +595,60 @@ export default function CashierPage() {
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: -20 }}
                     transition={{ duration: 0.2 }}
-                    className="flex items-center gap-2"
+                    className="flex flex-col gap-1"
                   >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{item.name}</p>
-                      <p className="text-xs text-muted-foreground">${item.price} ea</p>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button onClick={() => removeOne(item.menuItemId)}
-                        className="w-7 h-7 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-sm font-bold transition-colors flex items-center justify-center">
-                        −
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{item.name}</p>
+                        <p className="text-xs text-muted-foreground">${item.price} ea</p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => removeOne(item.menuItemId)}
+                          className="w-7 h-7 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-sm font-bold transition-colors flex items-center justify-center"
+                        >
+                          −
+                        </button>
+                        <span className="w-6 text-center text-sm font-bold">{item.quantity}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const mi = menu.find((m) => m.id === item.menuItemId);
+                            if (mi) addToCart(mi);
+                          }}
+                          className="w-7 h-7 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-sm font-bold transition-colors flex items-center justify-center"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <span className="w-12 text-right text-sm font-semibold text-[#C9A84C] shrink-0">
+                        ${item.price * item.quantity}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeItem(item.menuItemId)}
+                        className="w-6 h-6 rounded-lg hover:bg-red-500/20 text-muted-foreground hover:text-red-400 text-xs transition-colors flex items-center justify-center shrink-0"
+                      >
+                        ✕
                       </button>
-                      <span className="w-6 text-center text-sm font-bold">{item.quantity}</span>
-                      <button onClick={() => addToCart({ id: item.menuItemId, name: item.name, price: item.price, category: "Main" })}
-                        className="w-7 h-7 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-sm font-bold transition-colors flex items-center justify-center">
-                        +
-                      </button>
                     </div>
-                    <span className="w-12 text-right text-sm font-semibold text-[#C9A84C] shrink-0">
-                      ${item.price * item.quantity}
-                    </span>
-                    <button onClick={() => removeItem(item.menuItemId)}
-                      className="w-6 h-6 rounded-lg hover:bg-red-500/20 text-muted-foreground hover:text-red-400 text-xs transition-colors flex items-center justify-center shrink-0">
-                      ✕
-                    </button>
+                    {orderClients.length >= 2 && splitMode === "by_item" && (
+                      <select
+                        className="text-[10px] bg-white/[0.06] border border-white/10 rounded-lg px-2 py-1 max-w-full"
+                        value={assignment[item.menuItemId] ?? ""}
+                        onChange={(e) =>
+                          setAssignment((a) => ({ ...a, [item.menuItemId]: e.target.value }))
+                        }
+                      >
+                        <option value="">Assign…</option>
+                        {orderClients.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </motion.div>
                 ))
               )}
@@ -347,53 +657,127 @@ export default function CashierPage() {
 
           <Separator className="bg-white/[0.06]" />
 
-          {/* Footer */}
           <div className="shrink-0 p-4 space-y-3">
             <Input
-              placeholder="Order notes..."
+              placeholder="Order notes…"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               className="h-9 bg-white/[0.04] border-white/10 rounded-xl text-sm"
             />
 
-            <div className="flex justify-between items-baseline">
-              <div>
-                <span className="text-xs text-muted-foreground">{cartCount} item{cartCount !== 1 ? "s" : ""}</span>
-              </div>
-              <div className="text-right">
-                <span className="text-xs text-muted-foreground mr-2">Total</span>
-                <span className="text-3xl font-bold gold-text">${total}</span>
+            <div className="flex justify-between items-baseline text-sm">
+              <span className="text-xs text-muted-foreground">
+                {cartCount} item{cartCount !== 1 ? "s" : ""}
+              </span>
+              <div className="text-right space-y-0.5">
+                <div>
+                  <span className="text-xs text-muted-foreground mr-2">Subtotal</span>
+                  <span className="font-semibold">${subtotal.toFixed(2)}</span>
+                </div>
+                {discountPct > 0 && (
+                  <div>
+                    <span className="text-xs text-muted-foreground mr-2">Est. total</span>
+                    <span className="text-xl font-bold gold-text">${estimatedTotal.toFixed(2)}</span>
+                  </div>
+                )}
+                {discountPct === 0 && (
+                  <div>
+                    <span className="text-xs text-muted-foreground mr-2">Total</span>
+                    <span className="text-3xl font-bold gold-text">${subtotal.toFixed(2)}</span>
+                  </div>
+                )}
               </div>
             </div>
 
             <motion.button
+              type="button"
               onClick={confirmOrder}
-              disabled={!selectedClient || cart.length === 0 || submitting}
-              whileHover={!selectedClient || cart.length === 0 ? {} : { scale: 1.01 }}
-              whileTap={!selectedClient || cart.length === 0 ? {} : { scale: 0.98 }}
+              disabled={!canConfirm || submitting}
+              whileHover={!canConfirm || submitting ? {} : { scale: 1.01 }}
+              whileTap={!canConfirm || submitting ? {} : { scale: 0.98 }}
               className="w-full py-4 rounded-2xl font-bold text-base transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
               style={{
-                background: (!selectedClient || cart.length === 0)
-                  ? "rgba(255,255,255,0.06)"
-                  : "linear-gradient(135deg, #C9A84C, #E8C96A)",
-                color: (!selectedClient || cart.length === 0) ? "#6b7280" : "#0F0D09",
-                boxShadow: (!selectedClient || cart.length === 0) ? "none" : "0 4px 20px rgba(201,168,76,0.3)",
+                background:
+                  !canConfirm || cart.length === 0
+                    ? "rgba(255,255,255,0.06)"
+                    : "linear-gradient(135deg, #C9A84C, #E8C96A)",
+                color: !canConfirm || cart.length === 0 ? "#6b7280" : "#0F0D09",
+                boxShadow:
+                  !canConfirm || cart.length === 0 ? "none" : "0 4px 20px rgba(201,168,76,0.3)",
               }}
             >
               {submitting ? (
                 <span className="flex items-center justify-center gap-2">
                   <span className="w-4 h-4 border-2 border-[#0F0D09]/30 border-t-[#0F0D09] rounded-full animate-spin" />
-                  Processing...
+                  Processing…
                 </span>
-              ) : "Confirm Order"}
+              ) : (
+                "Confirm order"
+              )}
             </motion.button>
 
-            {!selectedClient && cart.length > 0 && (
-              <p className="text-xs text-center text-red-400/80">Select a guest to confirm</p>
+            {orderClients.length === 0 && cart.length > 0 && (
+              <p className="text-xs text-center text-red-400/80">Add a guest to confirm</p>
             )}
           </div>
         </div>
       </div>
+
+      <AnimatePresence>
+        {receiptOpen && lastReceipt && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 print:static print:bg-white print:p-0"
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              className="bg-[#1a1a1a] print:bg-white border border-white/10 rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto p-6 text-foreground print:border-0 print:max-w-none print:shadow-none"
+            >
+              <h2 className="text-lg font-bold mb-4 print:text-black">Receipt</h2>
+              {lastReceipt.map((row) => (
+                <div key={row.clientId} className="mb-6 border-b border-white/10 pb-4 last:border-0 print:border-black/10">
+                  <p className="font-semibold print:text-black">{row.name}</p>
+                  <p className="text-xs text-muted-foreground print:text-gray-600">
+                    +{row.pointsEarned} pts · balance {row.pointsTotal} · {row.tier}
+                  </p>
+                  <ul className="mt-2 space-y-1 text-sm print:text-black">
+                    {row.items.map((it) => (
+                      <li key={`${row.clientId}-${it.menuItemId}`} className="flex justify-between">
+                        <span>
+                          {it.name} × {it.quantity}
+                        </span>
+                        <span>${(it.price * it.quantity).toFixed(2)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-right font-bold text-[#C9A84C] mt-2 print:text-black">
+                    ${row.total.toFixed(2)}
+                  </p>
+                </div>
+              ))}
+              <div className="flex gap-2 print:hidden">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="flex-1 py-3 rounded-xl bg-white/[0.08] border border-white/10 font-semibold"
+                >
+                  Print
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReceiptOpen(false)}
+                  className="flex-1 py-3 rounded-xl gold-gradient text-[#0F0D09] font-bold"
+                >
+                  Done
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

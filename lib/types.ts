@@ -42,6 +42,9 @@ export interface Order {
   items: OrderItem[];
   total: number;
   notes: string;
+  promoCode?: string;
+  discountTotal?: number;
+  pointsEarned?: number;
 }
 
 export interface OrderWithCategoryTotals extends Order {
@@ -54,6 +57,40 @@ export interface ActiveVisit {
   phone: string;
   name: string;
   arrivedAt: string;
+  table: string;
+}
+
+export interface Promo {
+  code: string;
+  percentDiscount: number;
+  active: boolean;
+}
+
+export interface ShiftLogClientSummary {
+  clientId: string;
+  name: string;
+  pointsEarned: number;
+  total: number;
+}
+
+export interface ShiftLogEntry {
+  id: string;
+  confirmedAt: string;
+  table: string;
+  orderIds: string[];
+  totalRevenue: number;
+  clientSummaries: ShiftLogClientSummary[];
+}
+
+/** Cashier checkout response — one row per guest after payment */
+export interface CheckoutReceiptLine {
+  clientId: string;
+  name: string;
+  total: number;
+  pointsEarned: number;
+  pointsTotal: number;
+  tier: Tier;
+  items: OrderItem[];
 }
 
 export type ClientMatchPreview = Pick<Client, "id" | "name" | "phone">;

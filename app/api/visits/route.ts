@@ -42,10 +42,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const bodyObj = typeof body === "object" && body !== null ? body : {};
   const clientId =
-    typeof body === "object" && body !== null && "clientId" in body
-      ? String((body as { clientId: unknown }).clientId)
-      : "";
+    "clientId" in bodyObj ? String((bodyObj as { clientId: unknown }).clientId) : "";
+  const tableRaw =
+    "table" in bodyObj && (bodyObj as { table?: unknown }).table != null
+      ? String((bodyObj as { table: unknown }).table)
+      : undefined;
 
   if (!clientId) {
     return NextResponse.json(
@@ -62,7 +65,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  markArrived(client);
+  markArrived(client, tableRaw);
   return NextResponse.json({
     visits: getActiveVisits(),
     message: msgArrived,

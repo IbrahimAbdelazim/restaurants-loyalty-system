@@ -1,0 +1,17 @@
+[
+  {
+    "code": "WELCOME10",
+    "percentDiscount": 10,
+    "active": true
+  },
+  {
+    "code": "EID20",
+    "percentDiscount": 20,
+    "active": true
+  },
+  {
+    "code": "EXPIRED",
+    "percentDiscount": 50,
+    "active": false
+  }
+]

@@ -7,7 +7,10 @@ import type {
   FamilyGroup,
   MenuItem,
   Order,
+  Promo,
+  ShiftLogEntry,
 } from "./types";
+import { tierForPoints } from "./cashier-utils";
 import {
   buildMenuCategoryMap,
   clientPhoneMatchesPartial,
@@ -145,20 +148,85 @@ export function saveOrder(order: Order): void {
   writeJSON("orders.json", orders);
 }
 
+// --- Promos ---
+
+export function getPromos(): Promo[] {
+  return readJSON<Promo[]>("promos.json");
+}
+
+export function getActivePromoByCode(code: string): Promo | undefined {
+  const trimmed = code.trim().toUpperCase();
+  return getPromos().find(
+    (p) => p.active && p.code.toUpperCase() === trimmed
+  );
+}
+
+// --- Shift log ---
+
+export function getShiftLog(): ShiftLogEntry[] {
+  return readJSON<ShiftLogEntry[]>("shift_log.json");
+}
+
+function nextShiftLogId(entries: ShiftLogEntry[]): string {
+  const nums = entries.map((e) => {
+    const m = /^sl(\d+)$/.exec(e.id);
+    return m ? parseInt(m[1], 10) : 0;
+  });
+  const n = nums.length ? Math.max(...nums) + 1 : 1;
+  return `sl${n}`;
+}
+
+export function appendShiftLogEntry(
+  entry: Omit<ShiftLogEntry, "id"> & { id?: string }
+): ShiftLogEntry {
+  const entries = getShiftLog();
+  const row: ShiftLogEntry = {
+    ...entry,
+    id: entry.id ?? nextShiftLogId(entries),
+  };
+  entries.push(row);
+  writeJSON("shift_log.json", entries);
+  return row;
+}
+
+export function getShiftLogEntriesForDate(dateStr: string): ShiftLogEntry[] {
+  const prefix = dateStr;
+  return getShiftLog().filter((e) => e.confirmedAt.startsWith(prefix));
+}
+
+// --- Points & tier ---
+
+export function awardPointsAndSave(client: Client, pointsDelta: number): Client {
+  const nextPoints = Math.max(0, client.points + pointsDelta);
+  const updated: Client = {
+    ...client,
+    points: nextPoints,
+    tier: tierForPoints(nextPoints),
+  };
+  saveClient(updated);
+  return updated;
+}
+
 // --- Active visits ---
 
 export function getActiveVisits(): ActiveVisit[] {
-  return readJSON<ActiveVisit[]>("active_visits.json");
+  const raw = readJSON<Array<ActiveVisit & { table?: string }>>("active_visits.json");
+  return raw.map((v) => ({
+    ...v,
+    table: v.table && String(v.table).trim() ? String(v.table).trim() : "1",
+  }));
 }
 
-export function markArrived(client: Client): void {
+export function markArrived(client: Client, table: string = "1"): void {
   const visits = getActiveVisits();
   const idx = visits.findIndex((v) => v.clientId === client.id);
+  const t = table.trim() || "1";
   const row: ActiveVisit = {
     clientId: client.id,
     phone: client.phone,
     name: client.name,
     arrivedAt: new Date().toISOString(),
+    table: t,
   };
   if (idx >= 0) visits[idx] = row;
   else visits.push(row);
