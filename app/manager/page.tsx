@@ -26,7 +26,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { WeeklyRevenueChart } from "@/components/manager/weekly-revenue-chart";
 import { TierDistributionChart } from "@/components/manager/tier-distribution-chart";
@@ -135,7 +134,9 @@ export default async function ManagerPage({ searchParams }: PageProps) {
           <div className="flex items-center gap-2">
             <Link
               href="/"
-              className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+              className={cn(
+                "inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-[min(var(--radius-md),12px)] border border-border bg-background px-2.5 text-[0.8rem] font-medium whitespace-nowrap text-foreground transition-colors outline-none select-none hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:border-input dark:bg-input/30 dark:hover:bg-input/50"
+              )}
             >
               Home
             </Link>
