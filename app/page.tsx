@@ -69,6 +69,14 @@ export default function Home() {
             description="Build orders, confirm payments, sync to loyalty system instantly"
             delay={0.55}
           />
+          <AppCard
+            href="/manager"
+            emoji="📊"
+            title="Manager dashboard"
+            subtitle="Analytics · KPIs"
+            description="Revenue, popular items, tier mix, and upcoming guest occasions"
+            delay={0.7}
+          />
         </motion.div>
 
         <motion.div
@@ -77,7 +85,9 @@ export default function Home() {
           animate={{ opacity: 1 }}
           transition={{ delay: 0.8 }}
         >
-          <p className="text-muted-foreground/50 text-sm">Open both side-by-side to simulate the live flow</p>
+          <p className="text-muted-foreground/50 text-sm">
+            Open waiter & cashier side-by-side to simulate the live flow
+          </p>
           <ThemeToggle />
         </motion.div>
       </div>
