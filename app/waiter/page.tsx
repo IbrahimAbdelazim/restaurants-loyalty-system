@@ -68,6 +68,21 @@ function isWithinSevenDays(dateStr: string | null) {
 
 const DIAL_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"] as const;
 
+const TOAST_NEW_ORDER = {
+  en: "New order added by cashier!",
+  ar: "طلب جديد أضافه أمين الصندوق!",
+} as const;
+
+function waiterUiLang(): "en" | "ar" {
+  if (typeof window === "undefined") return "en";
+  const htmlLang = document.documentElement.lang?.toLowerCase() ?? "";
+  if (htmlLang.startsWith("ar")) return "ar";
+  if (navigator.language.toLowerCase().startsWith("ar")) return "ar";
+  return "en";
+}
+
+type FetchClientOptions = { refresh?: boolean; skipNewOrderToast?: boolean };
+
 export default function WaiterPage() {
   const [phoneDigits, setPhoneDigits] = useState("");
   const [client, setClient] = useState<ClientWithStats | null>(null);
@@ -75,6 +90,9 @@ export default function WaiterPage() {
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState<"history" | "family">("history");
   const [newOrderFlash, setNewOrderFlash] = useState(false);
+  const [flashingOrderId, setFlashingOrderId] = useState<string | null>(null);
+  const [sseConnected, setSseConnected] = useState(false);
+  const [usingPollingFallback, setUsingPollingFallback] = useState(false);
   const [matches, setMatches] = useState<ClientMatchPreview[]>([]);
   const [partialLoading, setPartialLoading] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
@@ -86,6 +104,7 @@ export default function WaiterPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const initialOrderIdsRef = useRef<Set<string>>(new Set());
   const partialTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flashOrderClearRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refreshVisits = useCallback(async () => {
     try {
@@ -102,44 +121,55 @@ export default function WaiterPage() {
     refreshVisits();
   }, [refreshVisits]);
 
-  const fetchClient = useCallback(async (phoneNum: string, isRefresh = false) => {
-    const normalized = normalizePhoneDigits(phoneNum);
-    if (!isRefresh) {
-      setLoading(true);
-      setError("");
-      setShowRegister(false);
-    }
-    try {
-      const res = await fetch(`/api/clients?phone=${encodeURIComponent(normalized)}`);
-      if (!res.ok) {
-        if (!isRefresh) {
-          const j = await res.json().catch(() => null);
-          const msg =
-            j && typeof j.message === "string"
-              ? j.message
-              : "No guest found with that number.";
-          setError(msg);
-          setShowRegister(true);
-        }
-        return;
+  const fetchClient = useCallback(
+    async (phoneNum: string, options?: boolean | FetchClientOptions) => {
+      let isRefresh = false;
+      let skipNewOrderToast = false;
+      if (options === true) isRefresh = true;
+      else if (options && typeof options === "object") {
+        isRefresh = Boolean(options.refresh);
+        skipNewOrderToast = Boolean(options.skipNewOrderToast);
       }
-      const data: ClientWithStats = await res.json();
+
+      const normalized = normalizePhoneDigits(phoneNum);
       if (!isRefresh) {
-        initialOrderIdsRef.current = new Set(data.recentOrders.map((o) => o.id));
-      } else {
-        const hasNew = data.recentOrders.some((o) => !initialOrderIdsRef.current.has(o.id));
-        if (hasNew) {
-          setNewOrderFlash(true);
-          setTimeout(() => setNewOrderFlash(false), 4000);
-        }
+        setLoading(true);
+        setError("");
+        setShowRegister(false);
       }
-      setClient(data);
-    } catch {
-      if (!isRefresh) setError("Connection error. Try again.");
-    } finally {
-      if (!isRefresh) setLoading(false);
-    }
-  }, []);
+      try {
+        const res = await fetch(`/api/clients?phone=${encodeURIComponent(normalized)}`);
+        if (!res.ok) {
+          if (!isRefresh) {
+            const j = await res.json().catch(() => null);
+            const msg =
+              j && typeof j.message === "string"
+                ? j.message
+                : "No guest found with that number.";
+            setError(msg);
+            setShowRegister(true);
+          }
+          return;
+        }
+        const data: ClientWithStats = await res.json();
+        if (!isRefresh) {
+          initialOrderIdsRef.current = new Set(data.recentOrders.map((o) => o.id));
+        } else {
+          const hasNew = data.recentOrders.some((o) => !initialOrderIdsRef.current.has(o.id));
+          if (hasNew && !skipNewOrderToast) {
+            setNewOrderFlash(true);
+            setTimeout(() => setNewOrderFlash(false), 4000);
+          }
+        }
+        setClient(data);
+      } catch {
+        if (!isRefresh) setError("Connection error. Try again.");
+      } finally {
+        if (!isRefresh) setLoading(false);
+      }
+    },
+    []
+  );
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -274,9 +304,118 @@ export default function WaiterPage() {
   };
 
   useEffect(() => {
-    if (!client) return;
-    const id = setInterval(() => fetchClient(client.phone, true), 3000);
-    return () => clearInterval(id);
+    if (!client) {
+      setSseConnected(false);
+      setUsingPollingFallback(false);
+      setFlashingOrderId(null);
+      if (flashOrderClearRef.current) {
+        clearTimeout(flashOrderClearRef.current);
+        flashOrderClearRef.current = null;
+      }
+      return;
+    }
+
+    const clientId = client.id;
+    const phone = client.phone;
+    let alive = true;
+    let source: EventSource | null = null;
+    let pollIv: ReturnType<typeof setInterval> | null = null;
+    let reconnectT: ReturnType<typeof setTimeout> | null = null;
+    let failures = 0;
+
+    const clearReconnect = () => {
+      if (reconnectT) {
+        clearTimeout(reconnectT);
+        reconnectT = null;
+      }
+    };
+
+    const stopPoll = () => {
+      if (pollIv) {
+        clearInterval(pollIv);
+        pollIv = null;
+      }
+      if (alive) setUsingPollingFallback(false);
+    };
+
+    const startPoll = () => {
+      if (pollIv) return;
+      if (alive) setUsingPollingFallback(true);
+      pollIv = setInterval(() => {
+        fetchClient(phone, true);
+      }, 3000);
+    };
+
+    const attach = () => {
+      if (!alive) return;
+      clearReconnect();
+      source?.close();
+      source = new EventSource(
+        `/api/events?clientId=${encodeURIComponent(clientId)}`
+      );
+
+      source.onopen = () => {
+        if (!alive) return;
+        failures = 0;
+        setSseConnected(true);
+        stopPoll();
+      };
+
+      source.onmessage = (event) => {
+        if (!alive) return;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+        if (typeof parsed !== "object" || parsed === null) return;
+        const p = parsed as { type?: string; orderId?: string };
+        if (p.type !== "order" || typeof p.orderId !== "string") return;
+        setFlashingOrderId(p.orderId);
+        if (flashOrderClearRef.current) clearTimeout(flashOrderClearRef.current);
+        flashOrderClearRef.current = setTimeout(() => {
+          setFlashingOrderId(null);
+          flashOrderClearRef.current = null;
+        }, 2800);
+        setNewOrderFlash(true);
+        setTimeout(() => setNewOrderFlash(false), 4000);
+        fetchClient(phone, { refresh: true, skipNewOrderToast: true });
+      };
+
+      source.onerror = () => {
+        if (!alive) return;
+        source?.close();
+        source = null;
+        setSseConnected(false);
+        failures += 1;
+        if (failures >= 3) startPoll();
+        const delay = Math.min(30_000, 500 * 2 ** Math.min(failures, 6));
+        reconnectT = setTimeout(() => {
+          reconnectT = null;
+          if (alive) attach();
+        }, delay);
+      };
+    };
+
+    attach();
+
+    const retrySseWhilePolling = setInterval(() => {
+      if (!alive || pollIv === null) return;
+      attach();
+    }, 20_000);
+
+    return () => {
+      alive = false;
+      clearReconnect();
+      source?.close();
+      stopPoll();
+      clearInterval(retrySseWhilePolling);
+      if (flashOrderClearRef.current) {
+        clearTimeout(flashOrderClearRef.current);
+        flashOrderClearRef.current = null;
+      }
+    };
   }, [client, fetchClient]);
 
   const tier = client ? TIER_CONFIG[client.tier] : null;
@@ -284,6 +423,15 @@ export default function WaiterPage() {
   const ptsToNext = client ? pointsToNextTier(client.tier as Tier, client.points) : null;
   const nextTier = client ? nextTierLabel(client.tier as Tier) : null;
   const clientIsInHouse = client ? activeVisits.some((v) => v.clientId === client.id) : false;
+
+  const liveDotGreen = Boolean(client && sseConnected && !usingPollingFallback);
+  const liveLabel = !client
+    ? "—"
+    : usingPollingFallback
+      ? "Polling"
+      : sseConnected
+        ? "Live"
+        : "Connecting…";
 
   return (
     <div className="min-h-screen bg-background">
@@ -301,10 +449,14 @@ export default function WaiterPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Live indicator */}
+            {/* Live / SSE / polling indicator */}
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-              Live
+              <span
+                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                  liveDotGreen ? "bg-green-500 animate-pulse" : "bg-zinc-500"
+                }`}
+              />
+              <span className="tabular-nums">{liveLabel}</span>
             </div>
             {client && (
               <motion.button
@@ -514,7 +666,7 @@ export default function WaiterPage() {
               exit={{ opacity: 0, y: -8 }}
               className="bg-green-500/10 border border-green-500/30 text-green-400 rounded-2xl p-3 text-sm flex items-center gap-2"
             >
-              <span className="animate-bounce">🔔</span> New order added by cashier!
+              <span className="animate-bounce">🔔</span> {TOAST_NEW_ORDER[waiterUiLang()]}
             </motion.div>
           )}
         </AnimatePresence>
@@ -795,6 +947,7 @@ export default function WaiterPage() {
                                 <OrderCard
                                   order={order}
                                   isNew={isNewInSession}
+                                  flashHighlight={flashingOrderId === order.id}
                                   sincePreviousVisit={gapText}
                                 />
                               </motion.div>
@@ -886,10 +1039,12 @@ export default function WaiterPage() {
 function OrderCard({
   order,
   isNew,
+  flashHighlight,
   sincePreviousVisit,
 }: {
   order: OrderWithCategoryTotals;
   isNew?: boolean;
+  flashHighlight?: boolean;
   sincePreviousVisit?: string | null;
 }) {
   return (
@@ -900,6 +1055,7 @@ function OrderCard({
         ? "bg-green-500/10 border-green-500/30 shadow-[0_0_20px_rgba(34,197,94,0.12)]"
         : "bg-white/[0.04] border-white/[0.05]"
       }
+      ${flashHighlight ? "ring-2 ring-green-400/70 ring-offset-2 ring-offset-background scale-[1.01]" : ""}
     `}
     >
       {sincePreviousVisit && (

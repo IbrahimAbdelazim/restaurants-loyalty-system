@@ -11,6 +11,7 @@ import {
   saveOrder,
 } from "@/lib/data";
 import { localizedMessage, pickLocalized, resolveLang } from "@/lib/api-messages";
+import { emitOrderSaved } from "@/lib/events";
 import { normalizeOrderItemsFromMenu } from "@/lib/order-checkout";
 import {
   applyPercentDiscount,
@@ -170,6 +171,7 @@ export async function POST(req: NextRequest) {
     pointsEarned,
   };
   saveOrder(order);
+  emitOrderSaved(order.clientId, order.id);
   const updated = awardPointsAndSave(client, pointsEarned);
   markDeparted(client.id);
 
@@ -274,6 +276,7 @@ function handleSplitCheckout(params: {
         pointsEarned: pe,
       };
       saveOrder(order);
+      emitOrderSaved(order.clientId, order.id);
       orders.push(order);
       const updated = awardPointsAndSave(c!, pe);
       markDeparted(c!.id);
@@ -352,6 +355,7 @@ function handleSplitCheckout(params: {
         pointsEarned: pe,
       };
       saveOrder(order);
+      emitOrderSaved(order.clientId, order.id);
       orders.push(order);
       const updated = awardPointsAndSave(c!, pe);
       markDeparted(c!.id);
